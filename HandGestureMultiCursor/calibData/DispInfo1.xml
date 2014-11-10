@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<opencv_storage>
+<WindowNum>1</WindowNum>
+<WindowWidth>2560</WindowWidth>
+<WindowHeight>1024</WindowHeight>
+<mat_array>
+  <_ type_id="opencv-matrix">
+  <rows>4</rows>
+  <cols>4</cols>
+  <dt>f</dt>
+  <data>
+  1.17850780e-001 9.70887482e-001 2.08539486e-001 -2.54767578e+003
+  -1.14015341e-002 2.11311996e-001 -9.77352142e-001 1.10692163e+003
+  -9.92965877e-001 1.12804048e-001 3.59728932e-002 2.57342871e+003
+  0. 0. 0. 1.</data></_>
+  <_ type_id="opencv-matrix">
+  <rows>3</rows>
+  <cols>3</cols>
+  <dt>f</dt>
+  <data>
+    5.2741559365039714e-001 6.5328504046056390e-002
+    9.8026094916208979e+002 1.1109049648222983e-002
+    -5.3794097609522629e-001 5.3023137586255461e+002
+    9.9347609088096464e-007 5.3150970862092195e-005 1.</data></_></mat_array>
+</opencv_storage>
+<!-- 前方左ディスプレイ -->

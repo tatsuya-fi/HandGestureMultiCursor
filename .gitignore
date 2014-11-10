@@ -4,3 +4,5 @@ ipch
 
 Debug
 Release
+*.sdf
+*.sdf
