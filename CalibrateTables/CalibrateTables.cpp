@@ -93,7 +93,7 @@ const cv::Mat calcPlaneParam(const vector<Point3f> planePoints)
 
 
 	// Save data
-	const char* filename = "../HandGestureMultiCursor/calibData/plane.xml";
+	const char* filename = "../HandGestureMultiCursor/calibData/TableInfo1.xml";
 	cv::FileStorage   cvfs(filename, CV_STORAGE_WRITE);
 	cv::WriteStructContext ws(cvfs, "mat_array", CV_NODE_SEQ);    // create node
 	cv::write(cvfs, "", planeParam);

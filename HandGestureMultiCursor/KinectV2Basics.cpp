@@ -14,9 +14,9 @@ isUseColor(true)
 KinectV2Basics::~KinectV2Basics()
 {
 	// 各ポインタを開放
-	SafeRelease(pDepthSource);
-	SafeRelease(pDepthReader);
-	SafeRelease(pDepthFrame);
+	//SafeRelease(pDepthSource);
+	//SafeRelease(pDepthReader);
+	//SafeRelease(pDepthFrame);
 	SafeRelease(pCoordinateMapper);
 
 	if (pSensor)
@@ -186,11 +186,11 @@ bool KinectV2Basics::GetDepthMat(Mat& outDepth16U)
 	return true;
 }
 
-bool KinectV2Basics::GetDepthMat(Mat& outDepth8UC3, Mat& outDepth16U)
+bool KinectV2Basics::GetDepthMat(Mat& outDepth8U, Mat& outDepth16U)
 {
 	if (GetDepthMat(outDepth16U))
 	{
-		outDepth16U.convertTo(outDepth8UC3, CV_8U, -225.0f / 4500.0f, 255.0f);
+		outDepth16U.convertTo(outDepth8U, CV_8U, -225.0f / 4500.0f, 255.0f);
 		return true;
 	}
 	else
@@ -199,9 +199,9 @@ bool KinectV2Basics::GetDepthMat(Mat& outDepth8UC3, Mat& outDepth16U)
 	}
 }
 
-bool KinectV2Basics::GetDepthMat(cv::Mat& outDepth8UC3, cv::Mat& outDepth16U, cv::Mat& outPoints32FC3)
+bool KinectV2Basics::GetDepthMat(cv::Mat& outDepth8U, cv::Mat& outDepth16U, cv::Mat& outPoints32FC3)
 {
-	if (GetDepthMat(outDepth8UC3, outDepth16U))
+	if (GetDepthMat(outDepth8U, outDepth16U))
 	{
 		// Init
 		outPoints32FC3 = Mat::zeros(heightDepth, widthDepth, CV_32FC3);

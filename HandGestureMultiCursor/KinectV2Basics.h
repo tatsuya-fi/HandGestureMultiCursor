@@ -31,12 +31,12 @@ public:
 	
 
 #ifdef OPENCV
-	// outDepth8UC3:   現フレームの深度画像(imshow()表示用)
+	// outDepth8U:   現フレームの深度画像(imshow()表示用)
 	// outDepth16S:    ピクセルごとのZ軸距離を格納した行列
 	// outPoints32FC3: 深度カメラ座標系における三次元点
 	bool GetDepthMat(cv::Mat& outDepth16S);
-	bool GetDepthMat(cv::Mat& outDepth8UC3, cv::Mat& outDepth16S);
-	bool GetDepthMat(cv::Mat& outDepth8UC3, cv::Mat& outDepth16S, cv::Mat& outPoints32FC3);
+	bool GetDepthMat(cv::Mat& outDepth8U, cv::Mat& outDepth16S);
+	bool GetDepthMat(cv::Mat& outDepth8U, cv::Mat& outDepth16S, cv::Mat& outPoints32FC3);
 
 	// 深度カメラ座標系の点群取得
 	bool GetPointsMat(cv::Mat& pointsMat);
@@ -47,7 +47,7 @@ public:
 #endif
 
 private:
-	// データ取得するまでの各ポインタ
+	// データ取得するまでの各ハンドル
 	IKinectSensor*		pSensor;
 	// Depth
 	IDepthFrameSource*	pDepthSource;
@@ -63,9 +63,4 @@ private:
 	// 各データのオンオフ
 	bool isUseDepth, isUseColor;
 	
-
-#ifdef OPENCV
-
-
-#endif
 };

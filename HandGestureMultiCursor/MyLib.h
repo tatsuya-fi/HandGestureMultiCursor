@@ -7,8 +7,9 @@
 
 /* OpenCV */
 // <TODO>
-// 必要に応じて追加のインクルードディレクトリに"C:\opencv249\opencv\build\include"を追加
-// ラベリングを行う場合はcvblob.h, cvblob.cpp, cvlabel.cppをプロジェクトに加える(namespace cvb)
+// - 必要に応じて追加のインクルードディレクトリに"C:\opencv249\opencv\build\include"を追加
+// - ラベリングを行う場合はcvblob.h, cvblob.cpp, cvlabel.cppをプロジェクトに加える(namespace cvb)
+// - fopenのエラーが出る場合はプリプロセッサの定義に_CRT_SECURE_NO_WARNINGSを追加
 // </TODO>
 #define OPENCV
 
@@ -70,7 +71,7 @@
 	//#pragma comment(lib, "C:\\opencv" CV_VERSION_STR "\\opencv\\build\\x86\\vc12\\lib\\opencv_features2d" CV_VERSION_STR CV_EXT_STR)
 	//#pragma comment(lib, "C:\\opencv" CV_VERSION_STR "\\opencv\\build\\x86\\vc12\\lib\\opencv_flann"      CV_VERSION_STR CV_EXT_STR)
 	//#pragma comment(lib, "C:\\opencv" CV_VERSION_STR "\\opencv\\build\\x86\\vc12\\lib\\opencv_ts"         CV_VERSION_STR CV_EXT_STR)
-	//#pragma comment(lib, "C:\\opencv" CV_VERSION_STR "\\opencv\\build\\x86\\vc12\\lib\\opencv_contrib"    CV_VERSION_STR CV_EXT_STR)
+	#pragma comment(lib, "C:\\opencv" CV_VERSION_STR "\\opencv\\build\\x86\\vc12\\lib\\opencv_contrib"    CV_VERSION_STR CV_EXT_STR)
 	//#pragma comment(lib, "C:\\opencv" CV_VERSION_STR "\\opencv\\build\\x86\\vc12\\lib\\opencv_ml"         CV_VERSION_STR CV_EXT_STR)
 	//#pragma comment(lib, "C:\\opencv" CV_VERSION_STR "\\opencv\\build\\x86\\vc12\\lib\\opencv_legacy"     CV_VERSION_STR CV_EXT_STR)
 	// ミーティング室用
@@ -85,7 +86,7 @@
 	//#pragma comment(lib, "C:\\opencv" CV_VERSION_STR "\\opencv\\build\\x86\\vc11\\lib\\opencv_flann"      CV_VERSION_STR CV_EXT_STR)
 	//#pragma comment(lib, "C:\\opencv" CV_VERSION_STR "\\opencv\\build\\x86\\vc11\\lib\\opencv_ffmpeg"     CV_VERSION_STR CV_EXT_STR)
 	//#pragma comment(lib, "C:\\opencv" CV_VERSION_STR "\\opencv\\build\\x86\\vc11\\lib\\opencv_ts"         CV_VERSION_STR CV_EXT_STR)
-	//#pragma comment(lib, "C:\\opencv" CV_VERSION_STR "\\opencv\\build\\x86\\vc11\\lib\\opencv_contrib"    CV_VERSION_STR CV_EXT_STR)
+	#pragma comment(lib, "C:\\opencv" CV_VERSION_STR "\\opencv\\build\\x86\\vc11\\lib\\opencv_contrib"    CV_VERSION_STR CV_EXT_STR)
 	//#pragma comment(lib, "C:\\opencv" CV_VERSION_STR "\\opencv\\build\\x86\\vc11\\lib\\opencv_ml"         CV_VERSION_STR CV_EXT_STR)
 	//#pragma comment(lib, "C:\\opencv" CV_VERSION_STR "\\opencv\\build\\x86\\vc11\\lib\\opencv_legacy"     CV_VERSION_STR CV_EXT_STR)
 

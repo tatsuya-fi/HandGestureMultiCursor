@@ -1,11 +1,19 @@
 #pragma once
 
 // This class uses OpenCV
-#include "MyLib.h"
+#include "stdafx.h"
 
-using namespace std;
-using namespace cv;
+namespace ftd
+{
+	// Informations of finger tips
+	typedef struct{
+		cv::Point2i points[5];
+		cv::Point2i centroid;
 
+		int numTips;
+	} FingerTips;
+
+}
 
 class FingerTipDetector
 {
@@ -13,13 +21,15 @@ class FingerTipDetector
 		FingerTipDetector(void);
 		~FingerTipDetector(void);
 
-		// Informations of finger tips
-		typedef struct{
-			Point2i points[5];
-			Point2i centroid;
+		void GetHandInfo(cv::Mat& handRegion, cv::Mat& headRegion, cv::Mat& cameraSpacePoints, hgmc::HandInfo& handInfoR, hgmc::HandInfo& handInfoL);
 
-			int numTips;
-		} FingerTips;
+		bool CheckIsHandOnTable(hgmc::HandInfo handInfo, cv::Mat& tableParam);
+
+		void CursorMove(hgmc::UserData userData, cv::Mat& TKinect2Table);
+
+		void FindHands(cv::Mat& handRegion, cv::Mat& headRegion, cvb::CvBlob& handR, cvb::CvBlob& handL, cvb::CvBlob& head, cv::Mat& handLabel);
+
+		CameraSpacePoint DetectHandCenter(cvb::CvBlob& hand, cvb::CvBlob& head, cv::Mat& handLabel, cvb::CvLabel label, const cv::Mat& cameraPoints);
 
 		// <Sumarry>
 		// Detect finger tips from the binary image
@@ -30,7 +40,7 @@ class FingerTipDetector
 		// [Output]
 		// - Fingertips
 		// </Sumarry>
-		FingerTips FindFingerTips(Mat& inHandImg);
+		ftd::FingerTips FindFingerTips(cv::Mat& handRegion);
 		//FingerTips FindFingerTips(const Mat& inHandImg);
 
 		// <Sumarry>
@@ -42,5 +52,14 @@ class FingerTipDetector
 		// - const FingerTips& tips:
 		//		Information of finger tips
 		// </Sumarry>
-		void DrawTips(Mat& src, const FingerTips& tips);
-	};
+		void DrawTips(cv::Mat& src, const ftd::FingerTips& tips);
+
+
+private:
+
+	// Debug
+	Mat resultImg;
+
+
+	cvb::CvBlobs LabelingMat(const cv::Mat& src, cv::Mat& label = cv::Mat());
+};
