@@ -20,3 +20,4 @@
 #include "KinectV2Basics.h"
 #include "HandGestureMultiCursor.h"
 #include "FingerTipDetector.h"
+#include "MouseControl.h"

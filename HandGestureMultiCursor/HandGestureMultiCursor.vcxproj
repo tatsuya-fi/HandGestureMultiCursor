@@ -87,6 +87,7 @@
     <ClInclude Include="FingerTipDetector.h" />
     <ClInclude Include="HandGestureMultiCursor.h" />
     <ClInclude Include="KinectV2Basics.h" />
+    <ClInclude Include="MouseControl.h" />
     <ClInclude Include="MyLib.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
@@ -97,6 +98,7 @@
     <ClCompile Include="FingerTipDetector.cpp" />
     <ClCompile Include="HandGestureMultiCursor.cpp" />
     <ClCompile Include="KinectV2Basics.cpp" />
+    <ClCompile Include="MouseControl.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>

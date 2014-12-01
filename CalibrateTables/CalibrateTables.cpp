@@ -411,8 +411,6 @@ void calibTable(const KinectV2Basics kinect, cv::Mat& showImg, cv::Mat& pointClo
 	const int offset = 5;	// [pixel]
 	while (1)
 	{
-		// <TODO>
-		// このゲットしてきた座標ほんとにあってる？確認
 		if (mFlag & cv::EVENT_FLAG_LBUTTON)
 		{
 			//for (int y = mY - offset; y < mY + offset; ++y)
@@ -493,21 +491,6 @@ int _tmain(int argc, _TCHAR* argv[])
 	namedWindow(windowName, WINDOW_AUTOSIZE);
 	// マウス用コールバック関数の設定
 	setMouseCallback(windowName, onMouse, 0);
-
-	Mat a = (Mat_<double>(3, 3) <<
-		101, 0, -5,
-		0, 10, -99 / 20,
-		11, 5, -3
-		);
-	Mat b = Mat::ones(3, 1, CV_64F);
-
-	Mat c1 = a.inv() * b;
-	Mat c2 = (a.t() * a).inv() * a.t() * b;
-	cout << c1 << endl;
-	cout << c2 << endl;
-	cout << a.at<double>(0, 0) * c1.at<double>(0, 0) + a.at<double>(0, 1) * c1.at<double>(1, 0) + a.at<double>(0, 2) * c1.at<double>(2, 0) << endl;
-	cout << a.at<double>(1, 0) * c1.at<double>(0, 0) + a.at<double>(1, 1) * c1.at<double>(1, 0) + a.at<double>(1, 2) * c1.at<double>(2, 0) << endl;
-	cout << a.at<double>(2, 0) * c1.at<double>(0, 0) + a.at<double>(2, 1) * c1.at<double>(1, 0) + a.at<double>(2, 2) * c1.at<double>(2, 0) << endl;
 
 	// 机の情報を取得するフレームを決定する
 	cout << "Press Space key for deciding frame." << endl;

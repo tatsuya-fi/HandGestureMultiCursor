@@ -4,7 +4,6 @@
 using namespace std;
 using namespace cv;
 using namespace cvb;
-using namespace ftd;
 using namespace hgmc;
 
 FingerTipDetector::FingerTipDetector(void)
@@ -16,107 +15,149 @@ FingerTipDetector::~FingerTipDetector(void)
 {
 }
 
-void FingerTipDetector::GetHandInfo(cv::Mat& handRegion, cv::Mat& headRegion, cv::Mat& cameraSpacePoints, hgmc::HandInfo& handInfoR, hgmc::HandInfo& handInfoL)
+cv::Mat FingerTipDetector::GetHandInfo(cv::Mat& handRegion, cv::Mat& headRegion, cv::Mat& cameraSpacePoints, hgmc::HandInfo& handInfoR, hgmc::HandInfo& handInfoL)
 {
-	// Separate hand information to R and L hand
-	CvBlob handR, handL, head;
-	Mat handLabel;
-	FindHands(handRegion, headRegion, handR, handL, head, handLabel);
+	Mat handRegionBuf = handRegion.clone();
+	Mat headRegionBuf = headRegion.clone();
 
-	// Set informations of each hands
-	if (handR.label > 0)
-	{
-		handInfoR.area = handR.area;
-		handInfoR.isTracked = true;
+	erode(handRegionBuf, handRegionBuf, Mat(), Point(-1, -1), 1);
+	dilate(handRegionBuf, handRegionBuf, Mat(), Point(-1, -1), 2);
 
-		CameraSpacePoint handPoint = DetectHandCenter(handR, head, handLabel, handR.label, cameraSpacePoints);
-		handInfoR.cameraPoint.x = handPoint.X + 0.1;
-		handInfoR.cameraPoint.y = handPoint.Y - 0.075;
-		handInfoR.cameraPoint.z = handPoint.Z - 0.05;
-	}
-	else
-	{
-		handInfoR.isTracked = false;
-	}
+	RotatedRect handL, handR, head;
+	FindHands(handRegionBuf, headRegionBuf, handR, handL, head);
 
-	if (handL.label > 0)
-	{
-		handInfoL.area = handL.area;
-		handInfoL.isTracked = true;
+	// 手を認識出来たか判定
+	handInfoR.isTracked = (handR.size.width == 0 || handR.size.height == 0) ? false : true;
+	handInfoL.isTracked = (handL.size.width == 0 || handL.size.height == 0) ? false : true;
 
-		CameraSpacePoint handPoint = DetectHandCenter(handL, head, handLabel, handL.label, cameraSpacePoints);
-		handInfoL.cameraPoint.x = handPoint.X + 0.1;
-		handInfoL.cameraPoint.y = handPoint.Y - 0.075;
-		handInfoL.cameraPoint.z = handPoint.Z - 0.05;
-	}
-	else
-	{
-		handInfoL.isTracked = false;
-	}
+	// 手の座標値(2次元, 3次元共に)取得
+	handInfoR.cameraPoint = DetectHandCenter(handRegionBuf, handR, head, cameraSpacePoints, handInfoR.depthPoint);
+	handInfoL.cameraPoint = DetectHandCenter(handRegionBuf, handL, head, cameraSpacePoints, handInfoL.depthPoint);
 
-	// Show debug image
-	if (!resultImg.empty())
-	{
-		imshow("test2", resultImg);
-	}
-}
+	// 手の位置補正(DepthとColor両カメラの座標変換行列が正しく求まっていないため)
+	handInfoR.cameraPoint.x += 0.1;
+	handInfoR.cameraPoint.y -= 0.055;
+	handInfoR.cameraPoint.z -= 0.175;
 
-bool FingerTipDetector::CheckIsHandOnTable(hgmc::HandInfo handInfo, cv::Mat& tableParam)
-{
-	if (!handInfo.isTracked) { return false; }
-
-	Mat handPoint = (Mat_<double>(4, 1) << handInfo.cameraPoint.x * 1000, handInfo.cameraPoint.y * 1000, handInfo.cameraPoint.z * 1000, 1.0);
-	// Convert hand point to table coordinate 
-	//handPoint = TKinect2Table * handPoint;
-	cout << handPoint << endl;
-
-	return true;
-}
-
-void FingerTipDetector::CursorMove(hgmc::UserData userData, cv::Mat& TKinect2Table)
-{
-
-}
-
-
-void FingerTipDetector::FindHands(cv::Mat& handRegion, cv::Mat& headRegion, cvb::CvBlob& handR, cvb::CvBlob& handL, cvb::CvBlob& head, cv::Mat& handLabel)
-{
-	CvBlobs handBlobs = LabelingMat(handRegion, handLabel);
-	CvBlobs headBlobs = LabelingMat(headRegion);
-
-	if (headBlobs.empty() || handBlobs.empty()) { return; }
+	// 手領域の座標値もとっておく
+	handInfoR.centroid3f = Point3f(cameraSpacePoints.ptr<float>(handR.center.y, handR.center.x)[0], cameraSpacePoints.ptr<float>(handR.center.y, handR.center.x)[1], cameraSpacePoints.ptr<float>(handR.center.y, handR.center.x)[2]);
+	handInfoL.centroid3f = Point3f(cameraSpacePoints.ptr<float>(handL.center.y, handL.center.x)[0], cameraSpacePoints.ptr<float>(handL.center.y, handL.center.x)[1], cameraSpacePoints.ptr<float>(handL.center.y, handL.center.x)[2]);
 	
-	// Set head blob
-	head = *headBlobs.begin()->second;
+	// Debug表示用の画像作成
+	Mat userArea = handRegionBuf + headRegionBuf;
 
-	// 右手左手を判別 / Detect each hand
-	int countNumHands = 0;
-	CvBlobs::iterator itHead = headBlobs.begin();
-	for (CvBlobs::iterator itHand = handBlobs.begin(); itHand != handBlobs.end(); ++itHand)
+	return userArea;
+}
+
+void FingerTipDetector::FindHands(cv::Mat& handRegion, cv::Mat& headRegion, cv::RotatedRect& handR, cv::RotatedRect& handL, cv::RotatedRect& head)
+{
+	// 頭に楕円フィッティング
+	Mat grayHead, binHead;
+	cvtColor(headRegion, grayHead, CV_BGR2GRAY);
+	vector<vector<Point> > contoursHead;
+	// 画像の二値化
+	cv::threshold(grayHead, binHead, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
+	// 輪郭の検出
+	cv::findContours(binHead, contoursHead, CV_RETR_LIST, CV_CHAIN_APPROX_NONE);
+
+	// 最も大きい領域を頭とする
+	int largestHeadID = -1, largestHeadCount = 0;
+	for (int i = 0; i < contoursHead.size(); ++i)
 	{
-		// 2直線(体軸と手軸)の交点を求める / Calc intersection point between 2lines (body axis and hand axis)
-		double angleHead = cvAngle(itHead->second);
-		double angleHand = cvAngle(itHand->second);
+		size_t count = contoursHead[i].size();
 
-		Mat A = (Mat_<double>(2, 2) <<
+		if (count < 100 || count > 1000) { continue; }
+
+		if (count > largestHeadCount)
+		{
+			largestHeadCount = count;
+			largestHeadID = i;
+		}
+	}
+	// 頭領域に楕円フィッティング
+	if (largestHeadID >= 0)
+	{
+		Mat pointsf;
+		Mat(contoursHead[largestHeadID]).convertTo(pointsf, CV_32F);
+		// 楕円フィッティング
+		head = cv::fitEllipse(pointsf);
+		// 楕円の描画
+		ellipse(headRegion, head, cv::Scalar(0, 0, 255), 2, CV_AA);
+
+	}
+
+
+	// 両腕に楕円フィッティング
+	Mat grayHand, binHand;
+	cvtColor(handRegion, grayHand, CV_BGR2GRAY);
+	vector<vector<Point> > contoursHand;
+	// 画像の二値化
+	cv::threshold(grayHand, binHand, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
+	// 輪郭の検出
+	cv::findContours(binHand, contoursHand, CV_RETR_LIST, CV_CHAIN_APPROX_NONE);
+
+	// 大きい領域2つを腕とする
+	int handID[2] = { -1, -1 }, handCount[2] = { 0, 0 };
+	for (int i = 0; i < contoursHand.size(); ++i)
+	{
+		size_t count = contoursHand[i].size();
+		if (count < 100 || count > 500) { continue; }
+
+		int id = i;
+		if (count > handCount[0])
+		{
+			int handIDBuf = handID[0];
+			int handCountBuf = handCount[0];
+
+			handID[0] = id;
+			handCount[0] = count;
+
+			id = handIDBuf;
+			count = handCountBuf;
+		}
+		if (count < handCount[0] && count > handCount[1])
+		{
+			handID[1] = id;
+			handCount[1] = count;
+		}
+	}
+	RotatedRect boxHands[2];
+	for (int i = 0; i < 2; ++i) {
+		if (handCount[i] < 5) { continue; }
+
+		Mat pointsf;
+		Mat(contoursHand[handID[i]]).convertTo(pointsf, CV_32F);
+		// 楕円フィッティング
+		boxHands[i] = cv::fitEllipse(pointsf);
+		// 楕円の描画
+		ellipse(handRegion, boxHands[i], cv::Scalar(0, 0, 255), 2, CV_AA);
+	}
+
+	for (int i = 0; i < 2; ++i)
+	{
+		if (boxHands[i].size.width == 0 || boxHands[i].size.height == 0) { continue; }
+
+		// 楕円の回転角 [pi]
+		float angleHead = (head.angle - 90.0f) / 180.0f * M_PI;
+		float angleHand = (boxHands[i].angle - 90.0f) / 180.0f * M_PI;
+
+		// 2直線(体軸と手軸)の交点を求める / Calc intersection point between 2lines (body axis and hand 
+		Mat A = (Mat_<float>(2, 2) <<
 			sin(angleHead), -cos(angleHead),
 			sin(angleHand), -cos(angleHand)
 			);
-		Mat B = (Mat_<double>(2, 1) <<
-			itHead->second->centroid.x * sin(angleHead) - itHead->second->centroid.y * cos(angleHead),
-			itHand->second->centroid.x * sin(angleHand) - itHand->second->centroid.y * cos(angleHand)
+		Mat B = (Mat_<float>(2, 1) <<
+			head.center.x * sin(angleHead) - head.center.y * cos(angleHead),
+			boxHands[i].center.x * sin(angleHand) - boxHands[i].center.y * cos(angleHand)
 			);
 
 		Mat C = A.inv() * B;
-
-		resultImg = (headRegion + handRegion);
-		circle(resultImg, Point(*C.ptr<double>(0, 0), *C.ptr<double>(1, 0)), 4, Scalar(200, 200, 100), 3);
-
-
-
+		
+		circle(headRegion, Point(*C.ptr<float>(0, 0), *C.ptr<float>(1, 0)), 4, Scalar(200, 200, 100), 3);
+				
 		// 上下どちらを向いているかを判別 / Detect which user is looking up or down
 		bool isLookingUp = true;
-		0 < (sin(angleHead) * (itHand->second->centroid.x - itHead->second->centroid.x) - cos(angleHead) * (itHand->second->centroid.y - itHead->second->centroid.y)) ?
+		0 < (sin(angleHead) * (boxHands[i].center.x - head.center.x) - cos(angleHead) * (boxHands[i].center.y - head.center.y)) ?
 			isLookingUp = true :
 			isLookingUp = false;
 		//isLookingUp ? cout << "Up" << endl : cout << "Down" << endl;
@@ -125,88 +166,83 @@ void FingerTipDetector::FindHands(cv::Mat& handRegion, cv::Mat& headRegion, cvb:
 		bool isLeftHand = true;
 		if (isLookingUp)
 		{
-			0 < (cos(angleHead) * (*C.ptr<double>(0, 0) - itHead->second->centroid.x) + sin(angleHead) * (*C.ptr<double>(1, 0) - itHead->second->centroid.y)) ?
+			0 < (cos(angleHead) * (*C.ptr<float>(0, 0) - head.center.x) + sin(angleHead) * (*C.ptr<float>(1, 0) - head.center.y)) ?
 				isLeftHand = true :
 				isLeftHand = false;
 		}
 		else
 		{
-			0 < (cos(angleHead) * (*C.ptr<double>(0, 0) - itHead->second->centroid.x) + sin(angleHead) * (*C.ptr<double>(1, 0) - itHead->second->centroid.y)) ?
-				isLeftHand = false:
-				isLeftHand = true ;
+			0 < (cos(angleHead) * (*C.ptr<float>(0, 0) - head.center.x) + sin(angleHead) * (*C.ptr<float>(1, 0) - head.center.y)) ?
+				isLeftHand = false :
+				isLeftHand = true;
 		}
 		//isLeftHand ? cout << "left" << endl : cout << "right" << endl;
 
 		// Set hand info
 		isLeftHand ?
-			handL = *itHand->second :
-			handR = *itHand->second;
-
-		++countNumHands;
-		if (countNumHands > 2) { break; }
+			handL = boxHands[i] :
+			handR = boxHands[i];
 	}
 }
 
-CameraSpacePoint FingerTipDetector::DetectHandCenter(cvb::CvBlob& hand, cvb::CvBlob& head, cv::Mat& handLabel, cvb::CvLabel label, const cv::Mat& cameraPoints)
+cv::Point3f FingerTipDetector::DetectHandCenter(cv::Mat handRegion, const cv::RotatedRect& hand, const cv::RotatedRect& head, const cv::Mat& cameraPoints, cv::Point2i& handPoint)
 {
 	// Calc intersection point between rectangle of hand and hand line
-	double angle = cvAngle(&hand);
-	double absAngle = abs(angle);
+	float angle = (hand.angle - 90.0f) / 180.0f * M_PI;
+	float absAngle = abs(angle);
 	Point2i anchor1, anchor2;
 	if (abs(angle) < M_PI / 4)
 	{
-		anchor1.x = hand.minx;
-		anchor1.y = (int)(tan(angle) * (hand.minx - hand.centroid.x) + hand.centroid.y);
+		anchor1.x = hand.boundingRect().tl().x;
+		anchor1.y = (int)(tan(angle) * (hand.boundingRect().tl().x - hand.center.x) + hand.center.y);
 
-		anchor2.x = hand.maxx;
-		anchor2.y = (int)(tan(angle) * (hand.maxx - hand.centroid.x) + hand.centroid.y);
+		anchor2.x = hand.boundingRect().br().x;
+		anchor2.y = (int)(tan(angle) * (hand.boundingRect().br().x - hand.center.x) + hand.center.y);
 	}
 	else
 	{
-		anchor1.x = (int)(1 / tan(angle) * (hand.miny - hand.centroid.y) + hand.centroid.x);
-		anchor1.y = hand.miny;
+		anchor1.x = (int)(1 / tan(angle) * (hand.boundingRect().tl().y - hand.center.y) + hand.center.x);
+		anchor1.y = hand.boundingRect().tl().y;
 
-		anchor2.x = (int)(1 / tan(angle) * (hand.maxy - hand.centroid.y) + hand.centroid.x);
-		anchor2.y = hand.maxy;
+		anchor2.x = (int)(1 / tan(angle) * (hand.boundingRect().br().y - hand.center.y) + hand.center.x);
+		anchor2.y = hand.boundingRect().br().y;
 	}
 
-	int distance1 = pow(head.centroid.x - anchor1.x, 2) + pow(head.centroid.y - anchor1.y, 2);
-	int distance2 = pow(head.centroid.x - anchor2.x, 2) + pow(head.centroid.y - anchor2.y, 2);
+	int distance1 = pow(head.center.x - anchor1.x, 2) + pow(head.center.y - anchor1.y, 2);
+	int distance2 = pow(head.center.x - anchor2.x, 2) + pow(head.center.y - anchor2.y, 2);
 
 	// Decide far point as a anchor point of the hand
-	Point2i anchor;
 	if (distance1 > distance2)
 	{
-		anchor.x = anchor1.x;
-		anchor.y = anchor1.y;
+		handPoint.x = anchor1.x;
+		handPoint.y = anchor1.y;
 	}
 	else
 	{
-		anchor.x = anchor2.x;
-		anchor.y = anchor2.y;
+		handPoint.x = anchor2.x;
+		handPoint.y = anchor2.y;
 	}
 
-	circle(resultImg, anchor, 4, Scalar(200, 100, 200), 3);
-
 	// Calc centroid of the hand
-	const int offset = 50;
-	CameraSpacePoint aveHand; aveHand.X = 0; aveHand.Y = 0; aveHand.Z = 0;
+	const int offset = 70;
+	Point3f aveHand; aveHand.x = 0; aveHand.y = 0; aveHand.z = 0;
 	Point2i debugPoint;
 	int count = 0;
-	for (int y = anchor.y - offset / 2; y < anchor.y + offset / 2; ++y)
+	for (int y = handPoint.y - offset / 2; y < handPoint.y + offset / 2; ++y)
 	{
-		if (y < 0) { continue; }
-		else if (y > handLabel.rows) { break; }
-		for (int x = anchor.x - offset / 2; x < anchor.x + offset / 2; ++x)
+		if (y < 0 || y < hand.boundingRect().tl().y) { continue; }
+		else if (y > handRegion.rows || y > hand.boundingRect().br().y) { break; }
+		for (int x = handPoint.x - offset / 2; x < handPoint.x + offset / 2; ++x)
 		{
-			if (x < 0) { continue; }
-			else if (x > handLabel.cols) { break; }
+			if (x < 0 || x < hand.boundingRect().tl().x) { continue; }
+			else if (x > handRegion.cols || x > hand.boundingRect().br().x) { break; }
 
-			if (*handLabel.ptr<unsigned long>(y, x) == static_cast<unsigned long>(label))
+			if (handRegion.at<Vec3b>(y, x)[1] > 0 && cameraPoints.ptr<float>(y, x)[0] > -1 * KINECT_HEIGHT)
 			{
-				aveHand.X += cameraPoints.ptr<float>(y, x)[0];
-				aveHand.Y += cameraPoints.ptr<float>(y, x)[1];
-				aveHand.Z += cameraPoints.ptr<float>(y, x)[2];
+				//circle(handRegion, Point(x, y), 1, Scalar(0, 0, 200), -1);
+				aveHand.x += cameraPoints.ptr<float>(y, x)[0];
+				aveHand.y += cameraPoints.ptr<float>(y, x)[1];
+				aveHand.z += cameraPoints.ptr<float>(y, x)[2];
 				++count;
 
 				debugPoint.x += x;
@@ -217,45 +253,42 @@ CameraSpacePoint FingerTipDetector::DetectHandCenter(cvb::CvBlob& hand, cvb::CvB
 
 	if (count > 0)
 	{
-		aveHand.X /= count;
-		aveHand.Y /= count;
-		aveHand.Z /= count;
+
+		aveHand.x /= count;
+		aveHand.y /= count;
+		aveHand.z /= count;
 
 		debugPoint.x /= count;
 		debugPoint.y /= count;
-		circle(resultImg, debugPoint, 4, Scalar(200, 100, 100), 3);
 
+		// Debug
+		//circle(handRegion, handPoint, 4, Scalar(200, 100, 200), 3);
+		circle(handRegion, debugPoint, 4, Scalar(200, 100, 100), 3);
 
 		return aveHand;
 	}
 	else
 	{
-		return CameraSpacePoint();
+		return Point3f();
 	}
 }
 
 
-FingerTips FingerTipDetector::FindFingerTips(Mat& handRegion)
+bool FingerTipDetector::CheckIsHandOnTable(hgmc::HandInfo handInfo, cv::Mat& tableParam)
 {
-	FingerTips tips;
+	if (!handInfo.isTracked) { return false; }
 
-	// Find the biggest region
-	CvBlobs blobs = LabelingMat(handRegion);
-	//cout << blobs[0]->contour.startingPoint.x << ", " << blobs[0]->contour.startingPoint.y << endl;
-	
-	//circle(inHandImg,tips.centroid, 2, Scalar(255, 255, 0), 1);
+	Mat handPoint = (Mat_<double>(4, 1) << handInfo.cameraPoint.x * 1000, handInfo.cameraPoint.y * 1000, handInfo.cameraPoint.z * 1000, 1.0);
+	// Convert hand point to table coordinate 
+	//handPoint = TKinect2Table * handPoint;
+	//cout << handPoint << endl;
 
-
-
-	return tips;
+	return true;
 }
 
-void FingerTipDetector::DrawTips(Mat& src, const FingerTips& tips)
+void FingerTipDetector::CursorMove(hgmc::UserData userData, cv::Mat& TKinect2Table)
 {
-	for (int i = 0; i < tips.numTips; ++i)
-	{
-		circle(src, tips.points[i], 3, Scalar(0, 0, 255), 2);
-	}
+
 }
 
 
@@ -281,8 +314,8 @@ CvBlobs FingerTipDetector::LabelingMat(const Mat& src, Mat& label)
 	label = labelBuf;
 
 	// Filter noise / ノイズ点の消去
-	cvFilterByArea(blobs, 1000, 1000000);
-
+	cvFilterByArea(blobs, 900, 1000000);
+	
 	// Render blobs
 	cvRenderBlobs(labelImg, blobs, &srcIpl, &srcIpl);
 
@@ -292,3 +325,216 @@ CvBlobs FingerTipDetector::LabelingMat(const Mat& src, Mat& label)
 
 	return blobs;
 }
+
+
+
+// 以下cvblobを使うバージョン 低速のため使わないことに
+//void FingerTipDetector::FindHands(cv::Mat& handRegion, cv::Mat& headRegion, static cvb::CvBlob& handR, static cvb::CvBlob& handL, cvb::CvBlob& head, cv::Mat& handLabel)
+//{
+//	CvBlobs handBlobs = LabelingMat(handRegion, handLabel);
+//	CvBlobs headBlobs = LabelingMat(headRegion);
+//
+//	if (headBlobs.empty() || handBlobs.empty()) { return; }
+//	
+//	// Set head blob
+//	head = *headBlobs.begin()->second;
+//
+//	// 右手左手を判別 / Detect each hand
+//	int countNumHands = 0;
+//	CvBlobs::iterator itHead = headBlobs.begin();
+//	for (CvBlobs::iterator itHand = handBlobs.begin(); itHand != handBlobs.end(); ++itHand)
+//	{
+//		// 2直線(体軸と手軸)の交点を求める / Calc intersection point between 2lines (body axis and hand axis)
+//		double angleHead = cvAngle(itHead->second);
+//		double angleHand = cvAngle(itHand->second);
+//
+//		Mat A = (Mat_<double>(2, 2) <<
+//			sin(angleHead), -cos(angleHead),
+//			sin(angleHand), -cos(angleHand)
+//			);
+//		Mat B = (Mat_<double>(2, 1) <<
+//			itHead->second->centroid.x * sin(angleHead) - itHead->second->centroid.y * cos(angleHead),
+//			itHand->second->centroid.x * sin(angleHand) - itHand->second->centroid.y * cos(angleHand)
+//			);
+//
+//		Mat C = A.inv() * B;
+//
+//		resultImg = (headRegion + handRegion);
+//		circle(resultImg, Point(*C.ptr<double>(0, 0), *C.ptr<double>(1, 0)), 4, Scalar(200, 200, 100), 3);
+//
+//
+//
+//		// 上下どちらを向いているかを判別 / Detect which user is looking up or down
+//		bool isLookingUp = true;
+//		0 < (sin(angleHead) * (itHand->second->centroid.x - itHead->second->centroid.x) - cos(angleHead) * (itHand->second->centroid.y - itHead->second->centroid.y)) ?
+//			isLookingUp = true :
+//			isLookingUp = false;
+//		//isLookingUp ? cout << "Up" << endl : cout << "Down" << endl;
+//
+//		// 右手左手の判別
+//		bool isLeftHand = true;
+//		if (isLookingUp)
+//		{
+//			0 < (cos(angleHead) * (*C.ptr<double>(0, 0) - itHead->second->centroid.x) + sin(angleHead) * (*C.ptr<double>(1, 0) - itHead->second->centroid.y)) ?
+//				isLeftHand = true :
+//				isLeftHand = false;
+//		}
+//		else
+//		{
+//			0 < (cos(angleHead) * (*C.ptr<double>(0, 0) - itHead->second->centroid.x) + sin(angleHead) * (*C.ptr<double>(1, 0) - itHead->second->centroid.y)) ?
+//				isLeftHand = false:
+//				isLeftHand = true ;
+//		}
+//		//isLeftHand ? cout << "left" << endl : cout << "right" << endl;
+//
+//		// Set hand info
+//		isLeftHand ?
+//			handL = *itHand->second :
+//			handR = *itHand->second;
+//
+//		++countNumHands;
+//		if (countNumHands > 2) { break; }
+//	}
+//}
+
+//void FingerTipDetector::GetHandInfo(cv::Mat& handRegion, cv::Mat& headRegion, cv::Mat& cameraSpacePoints, hgmc::HandInfo& handInfoR, hgmc::HandInfo& handInfoL)
+//{
+//	// Separate hand information to R and L hand
+//	CvBlob handRbuf, handLbuf, head;
+//	Mat handLabel;
+//	FindHands(handRegion, headRegion, handRbuf, handLbuf, head, handLabel);
+//
+//	// 改めて格納 こうしないと何故か勝手に開放する
+//	CvBlob handR = handRbuf;
+//	CvBlob handL = handLbuf;
+//	// Set informations of each hands
+//	if (0 < handR.area && handR.area < 100000)
+//	{
+//		handInfoR.area = handR.area;
+//		handInfoR.isTracked = true;
+//
+//		CameraSpacePoint handPoint = DetectHandCenter(handR, head, handLabel, handR.label, cameraSpacePoints);
+//		handInfoR.cameraPoint.x = handPoint.X + 0.1;
+//		handInfoR.cameraPoint.y = handPoint.Y - 0.035;
+//		handInfoR.cameraPoint.z = handPoint.Z - 0.075;
+//
+//		handInfoR.centroid3f.x = cameraSpacePoints.ptr<float>(handR.centroid.y, handR.centroid.x)[0];
+//		handInfoR.centroid3f.y = cameraSpacePoints.ptr<float>(handR.centroid.y, handR.centroid.x)[1];
+//		handInfoR.centroid3f.z = cameraSpacePoints.ptr<float>(handR.centroid.y, handR.centroid.x)[2];
+//	}
+//	else
+//	{
+//		handInfoR.isTracked = false;
+//	}
+//	if (0 < handL.area && handL.area < 100000)
+//	{
+//		handInfoL.area = handL.area;
+//		handInfoL.isTracked = true;
+//
+//		CameraSpacePoint handPoint = DetectHandCenter(handL, head, handLabel, handL.label, cameraSpacePoints);
+//		handInfoL.cameraPoint.x = handPoint.X + 0.1;
+//		handInfoL.cameraPoint.y = handPoint.Y - 0.075;
+//		handInfoL.cameraPoint.z = handPoint.Z - 0.075;
+//
+//		handInfoL.centroid3f.x = cameraSpacePoints.ptr<float>(handL.centroid.y, handL.centroid.x)[0];
+//		handInfoL.centroid3f.y = cameraSpacePoints.ptr<float>(handL.centroid.y, handL.centroid.x)[1];
+//		handInfoL.centroid3f.z = cameraSpacePoints.ptr<float>(handL.centroid.y, handL.centroid.x)[2];
+//	}
+//	else
+//	{
+//		handInfoL.isTracked = false;
+//	}
+//
+//	// Show debug image
+//	if (!resultImg.empty())
+//	{
+//		imshow("test2", resultImg);
+//	}
+//}
+//
+//CameraSpacePoint FingerTipDetector::DetectHandCenter(cvb::CvBlob& hand, cvb::CvBlob& head, cv::Mat& handLabel, cvb::CvLabel label, const cv::Mat& cameraPoints)
+//{
+//	// Calc intersection point between rectangle of hand and hand line
+//	double angle = cvAngle(&hand);
+//	double absAngle = abs(angle);
+//	Point2i anchor1, anchor2;
+//	if (abs(angle) < M_PI / 4)
+//	{
+//		anchor1.x = hand.minx;
+//		anchor1.y = (int)(tan(angle) * (hand.minx - hand.centroid.x) + hand.centroid.y);
+//
+//		anchor2.x = hand.maxx;
+//		anchor2.y = (int)(tan(angle) * (hand.maxx - hand.centroid.x) + hand.centroid.y);
+//	}
+//	else
+//	{
+//		anchor1.x = (int)(1 / tan(angle) * (hand.miny - hand.centroid.y) + hand.centroid.x);
+//		anchor1.y = hand.miny;
+//
+//		anchor2.x = (int)(1 / tan(angle) * (hand.maxy - hand.centroid.y) + hand.centroid.x);
+//		anchor2.y = hand.maxy;
+//	}
+//
+//	int distance1 = pow(head.centroid.x - anchor1.x, 2) + pow(head.centroid.y - anchor1.y, 2);
+//	int distance2 = pow(head.centroid.x - anchor2.x, 2) + pow(head.centroid.y - anchor2.y, 2);
+//
+//	// Decide far point as a anchor point of the hand
+//	Point2i anchor;
+//	if (distance1 > distance2)
+//	{
+//		anchor.x = anchor1.x;
+//		anchor.y = anchor1.y;
+//	}
+//	else
+//	{
+//		anchor.x = anchor2.x;
+//		anchor.y = anchor2.y;
+//	}
+//
+//	//circle(resultImg, anchor, 4, Scalar(200, 100, 200), 3);
+//
+//	// Calc centroid of the hand
+//	const int offset = 70;
+//	CameraSpacePoint aveHand; aveHand.X = 0; aveHand.Y = 0; aveHand.Z = 0;
+//	Point2i debugPoint;
+//	int count = 0;
+//	for (int y = anchor.y - offset / 2; y < anchor.y + offset / 2; ++y)
+//	{
+//		if (y < 0) { continue; }
+//		else if (y > handLabel.rows) { break; }
+//		for (int x = anchor.x - offset / 2; x < anchor.x + offset / 2; ++x)
+//		{
+//			if (x < 0) { continue; }
+//			else if (x > handLabel.cols) { break; }
+//
+//			if (*handLabel.ptr<unsigned long>(y, x) == static_cast<unsigned long>(label))
+//			{
+//				aveHand.X += cameraPoints.ptr<float>(y, x)[0];
+//				aveHand.Y += cameraPoints.ptr<float>(y, x)[1];
+//				aveHand.Z += cameraPoints.ptr<float>(y, x)[2];
+//				++count;
+//
+//				debugPoint.x += x;
+//				debugPoint.y += y;
+//			}
+//		}
+//	}
+//
+//	if (count > 0)
+//	{
+//		aveHand.X /= count;
+//		aveHand.Y /= count;
+//		aveHand.Z /= count;
+//
+//		debugPoint.x /= count;
+//		debugPoint.y /= count;
+//		circle(resultImg, debugPoint, 4, Scalar(200, 100, 100), 3);
+//
+//
+//		return aveHand;
+//	}
+//	else
+//	{
+//		return CameraSpacePoint();
+//	}
+//}

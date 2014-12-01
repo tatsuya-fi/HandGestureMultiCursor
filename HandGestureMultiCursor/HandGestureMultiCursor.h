@@ -1,8 +1,6 @@
 #pragma once
 
-using namespace std;
-using namespace cv;
-using namespace cvb;
+
 
 namespace hgmc	// Start namespace hgmc
 {
@@ -17,8 +15,8 @@ namespace hgmc	// Start namespace hgmc
 // #define USE_COLOR_V2		// カラー画像を使用する．コメントアウトすると少し早くなる．多分．
 
 // The height of Kinect which is set on the celling [mm]
-const static int KINECT_HEIGHT = 2000;		// デスクトップPC
-//const static int KINECT_HEIGHT = 1800;		// mac
+const static float KINECT_HEIGHT = 2000;		// デスクトップPC
+//const static float KINECT_HEIGHT = 1800;		// mac
 
 // The threshold which detect users in the first step (The distance from the floor)
 // 最初にユーザを検出する時のしきい値(地面からの高さ)[mm]
@@ -34,7 +32,7 @@ const static char* dispInfo_filenames[] = {
 	"calibData/DispInfo1.xml"
 	//,"calibData/DispInfo2.xml"
 };
-const static vector<String> DISP_INFO_FILENAMES(begin(dispInfo_filenames), end(dispInfo_filenames));
+const static std::vector<std::string> DISP_INFO_FILENAMES(std::begin(dispInfo_filenames), std::end(dispInfo_filenames));
 
 //const static char* tableInfo_filenames[] = {
 //
@@ -42,7 +40,7 @@ const static vector<String> DISP_INFO_FILENAMES(begin(dispInfo_filenames), end(d
 const static char* tableInfo_filename = { "calibData/TableInfo1.xml" };
 
 // 手を検出するための, 頭を中心とした球の半径 [m]
-const static float SENCIG_CIRCLE_RADIUS = 0.4;
+const static float SENCIG_CIRCLE_RADIUS = 0.3;
 
 
 ///////////////////////////////////////////////////////////////////
@@ -51,7 +49,7 @@ const static float SENCIG_CIRCLE_RADIUS = 0.4;
 
 
 // Threshold for separating table and user [mm]
-const static float TABLE_THRESHOLD = 20;
+const static float TABLE_THRESHOLD = 15;
 
 // Maximum height of the users [mm]
 const static float HEAD_HEIGHT_MAX = 2400;
@@ -102,15 +100,17 @@ const int SENCEING_MAX = 4000;		// 深度画像に表示する最大距離[mm]
 //
 // 頭に関する情報
 typedef struct {
-	Point2i depthPoint;
-	Point3f cameraPoint;
+	cv::Point2i depthPoint;
+	cv::Point3f cameraPoint;
 
 	int height;	// Height from table
 } HeadInfo;
 
 // 手に関する情報
 typedef struct {
-	Point3f cameraPoint;
+	cv::Point2i depthPoint;
+	cv::Point3f cameraPoint;
+	cv::Point3f centroid3f;
 	float area;
 	bool isTracked;
 } HandInfo;
@@ -118,9 +118,10 @@ typedef struct {
 // カーソルに関する情報
 typedef struct {
 	int displayNum;
-	Point2f position;
+	cv::Point2f position;
 	bool isShownCursor;
 	bool isClicking;
+	float clickingTime; // [sec]
 } CursorInfo;
 
 //
@@ -139,7 +140,7 @@ typedef struct {
 	HandInfo handInfo;
 
 	// 重心
-	Point2i centroid;
+	cv::Point2i centroid;
 	unsigned long labelID;
 
 	CursorInfo cursorInfo;
@@ -147,6 +148,8 @@ typedef struct {
 	int preDataID;	// For Accessing pre data
 
 } UserData;
+
+
 
 }	// End of namespace hgmc
 
@@ -180,8 +183,8 @@ public:
 
 private:
 	// Screen resolution
-	vector<int> VEC_WIN_WIDTH;
-	vector<int> VEC_WIN_HEIGHT;
+	std::vector<int> VEC_WIN_WIDTH;
+	std::vector<int> VEC_WIN_HEIGHT;
 
 #ifdef USE_KINECT_V1
 	// Window size (depth)
@@ -189,32 +192,37 @@ private:
 	int CAMERA_HEIGHT;
 #endif
 	// Each pixel or 3D point data
-	Mat	userAreaMat;	// Areas of each users
-	Mat point3fMatrix;	// 3D points of the observed points
-	Mat heightMatrix;	// Heights of each pixel from the floor
-	Mat labelMat;		// Label of each pixels
-	Mat preLabelMat;	// Label of each pixels in pre-frame
-	Mat heightFromTable;// Heights of each pixel from table
+	cv::Mat	userAreaMat;	// Areas of each users
+	cv::Mat point3fMatrix;	// 3D points of the observed points
+	cv::Mat heightMatrix;	// Heights of each pixel from the floor
+	cv::Mat labelMat;		// Label of each pixels
+	cv::Mat preLabelMat;	// Label of each pixels in pre-frame
+	cv::Mat heightFromTable;// Heights of each pixel from table
 
-	Mat depthImage;		// Image from kinect depth camera
-	Mat rgbImage;		// Image from kinect color camera
+	cv::Mat depthImage;		// Image from kinect depth camera
+	cv::Mat rgbImage;		// Image from kinect color camera
 
-	vector<Mat> handRegions;
-	vector<Mat> headRegions;
+	std::vector<cv::Mat> handRegions;
+	std::vector<cv::Mat> headRegions;
 
 	// 座標変換行列
-	vector<Mat> TKinect2Display;
-	vector<Mat> TDisplay2Pixel;
-	vector<int> windowOffsetX;	// マルチディスプレイ表示の際，他のディスプレイを考慮した座標値を求めるために使う
+	std::vector<cv::Mat> TKinect2Display;
+	std::vector<cv::Mat> TDisplay2Pixel;
+	std::vector<int> windowOffsetX;	// マルチディスプレイ表示の際，他のディスプレイを考慮した座標値を求めるために使う
 
-	Mat tableParam;	// テーブル平面を表すパラメータ
+	cv::Mat tableParam;	// テーブル平面を表すパラメータ
 
 	// Informations of each users
 	//UserData userData;
-	vector<hgmc::UserData> userData;
-	vector<hgmc::UserData> preUserData;
+	std::vector<hgmc::UserData> userData;
+	std::vector<hgmc::UserData> preUserData;
 
-	TickMeter timer;
+	cv::TickMeter timer;
+	cv::TickMeter fpsTimer;
+	double fps;
+	std::string fpsStr;
+	int fpsCount = 0;
+
 	bool isCursorMoving = true;
 
 #ifdef USE_KINECT_V1
@@ -235,12 +243,13 @@ private:
 
 	/* Other Functions */
 	bool getFrameData();
-	CvBlobs labelingUserArea(Mat& mat);
-	void detectHeadPosition(CvBlobs blobs);
-	void detectArm(CvBlobs blobs);
-	void checkSettingCursor();
-	void calcCursorPos(CvBlobs blobs);
-	void detectFingerTips(vector<Mat> handRegions, vector<Mat> headRegions);
+	cvb::CvBlobs labelingUserArea(cv::Mat& mat);
+	void detectHeadPosition(cvb::CvBlobs blobs);
+	void detectArm(cvb::CvBlobs blobs);
+	void detectHand(std::vector<cv::Mat> handRegions, std::vector<cv::Mat> headRegions);
+	void calcCursorPos(cvb::CvBlobs blobs);
+	void pointingCursorControl();
+	void relativeCursorControl();
 	void updatePreData();
 
 
@@ -252,7 +261,7 @@ private:
 	/* OpenGL */
 	int* WinIDs;
 
-	void MouseControl(float x, float y);
+	void SetCursor(float x, float y);
 
 };
 
