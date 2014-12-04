@@ -437,13 +437,26 @@ CvBlobs HandGestureMultiCursor::labelingUserArea(Mat& src)
 	// Filter noise / ノイズ点の消去
 	cvFilterByArea(blobs, 2000, 1000000);
 
+	// 画面外に接しているユーザ領域は考慮しない
+	for (CvBlobs::iterator it = blobs.begin(); it != blobs.end();)
+	{
+		if (it->second->minx <= 0 || kinectBasics.widthDepth <= it->second->maxx
+			|| it->second->miny <= 0 || kinectBasics.heightDepth <= it->second->maxy)
+		{
+			it = blobs.erase(it);
+			continue;
+		}
+			++it;
+	}
+
 	// Render blobs
 	cvRenderBlobs(labelImg, blobs, &srcIpl, &srcIpl);
 
 	// Release unused IplImages
 	cvReleaseImage(&labelImg);
 	cvReleaseImage(&srcIplBinary);
-	
+
+
 	return blobs;
 }
 

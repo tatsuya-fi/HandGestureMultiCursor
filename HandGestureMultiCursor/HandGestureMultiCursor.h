@@ -47,7 +47,7 @@ const static double timeLimit = 0.2;	// [sec]
 
 
 // Threshold for separating table and user [mm]
-const static float TABLE_THRESHOLD = 15;
+const static float TABLE_THRESHOLD = 30;
 
 // Maximum height of the users [mm]
 const static float HEAD_HEIGHT_MAX = 2400;
