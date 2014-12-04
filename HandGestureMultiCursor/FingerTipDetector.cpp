@@ -34,11 +34,6 @@ cv::Mat FingerTipDetector::GetHandInfo(cv::Mat& handRegion, cv::Mat& headRegion,
 	handInfoR.cameraPoint = DetectHandCenter(handRegionBuf, handR, head, cameraSpacePoints, handInfoR.depthPoint);
 	handInfoL.cameraPoint = DetectHandCenter(handRegionBuf, handL, head, cameraSpacePoints, handInfoL.depthPoint);
 
-	// 手の位置補正(DepthとColor両カメラの座標変換行列が正しく求まっていないため)
-	handInfoR.cameraPoint.x += 0.1;
-	handInfoR.cameraPoint.y -= 0.055;
-	handInfoR.cameraPoint.z -= 0.175;
-
 	// 手領域の座標値もとっておく
 	handInfoR.centroid3f = Point3f(cameraSpacePoints.ptr<float>(handR.center.y, handR.center.x)[0], cameraSpacePoints.ptr<float>(handR.center.y, handR.center.x)[1], cameraSpacePoints.ptr<float>(handR.center.y, handR.center.x)[2]);
 	handInfoL.centroid3f = Point3f(cameraSpacePoints.ptr<float>(handL.center.y, handL.center.x)[0], cameraSpacePoints.ptr<float>(handL.center.y, handL.center.x)[1], cameraSpacePoints.ptr<float>(handL.center.y, handL.center.x)[2]);
@@ -101,7 +96,7 @@ void FingerTipDetector::FindHands(cv::Mat& handRegion, cv::Mat& headRegion, cv::
 	for (int i = 0; i < contoursHand.size(); ++i)
 	{
 		size_t count = contoursHand[i].size();
-		if (count < 100 || count > 500) { continue; }
+		if (count < 50 || count > 500) { continue; }
 
 		int id = i;
 		if (count > handCount[0])
@@ -133,15 +128,18 @@ void FingerTipDetector::FindHands(cv::Mat& handRegion, cv::Mat& headRegion, cv::
 		ellipse(handRegion, boxHands[i], cv::Scalar(0, 0, 255), 2, CV_AA);
 	}
 
+	bool isLeftHand[2] = { true, true };
+	bool isLookingUp[2] = { true, true };
+	bool isFoundFirstHand = false;
 	for (int i = 0; i < 2; ++i)
 	{
-		if (boxHands[i].size.width == 0 || boxHands[i].size.height == 0) { continue; }
+		if (boxHands[i].size.width <= 0 || boxHands[i].size.height <= 0) { continue; }
 
 		// 楕円の回転角 [pi]
 		float angleHead = (head.angle - 90.0f) / 180.0f * M_PI;
 		float angleHand = (boxHands[i].angle - 90.0f) / 180.0f * M_PI;
 
-		// 2直線(体軸と手軸)の交点を求める / Calc intersection point between 2lines (body axis and hand 
+		// 2直線(体軸と手軸)の交点を求める / Calc intersection point between 2lines (body axis and hand)
 		Mat A = (Mat_<float>(2, 2) <<
 			sin(angleHead), -cos(angleHead),
 			sin(angleHand), -cos(angleHand)
@@ -156,32 +154,50 @@ void FingerTipDetector::FindHands(cv::Mat& handRegion, cv::Mat& headRegion, cv::
 		circle(headRegion, Point(*C.ptr<float>(0, 0), *C.ptr<float>(1, 0)), 4, Scalar(200, 200, 100), 3);
 				
 		// 上下どちらを向いているかを判別 / Detect which user is looking up or down
-		bool isLookingUp = true;
 		0 < (sin(angleHead) * (boxHands[i].center.x - head.center.x) - cos(angleHead) * (boxHands[i].center.y - head.center.y)) ?
-			isLookingUp = true :
-			isLookingUp = false;
+			isLookingUp[i] = true :
+			isLookingUp[i] = false;
 		//isLookingUp ? cout << "Up" << endl : cout << "Down" << endl;
 
+		// 左右で体の向きがおかしい場合は2つ目の腕は検出しない
+		if (i == 1)
+		{
+			if (isLookingUp[0] != isLookingUp[1])
+			{
+				return;
+			}
+		}
+
 		// 右手左手の判別
-		bool isLeftHand = true;
-		if (isLookingUp)
+		if (isLookingUp[i])
 		{
 			0 < (cos(angleHead) * (*C.ptr<float>(0, 0) - head.center.x) + sin(angleHead) * (*C.ptr<float>(1, 0) - head.center.y)) ?
-				isLeftHand = true :
-				isLeftHand = false;
+				isLeftHand[i] = true :
+				isLeftHand[i] = false;
 		}
 		else
 		{
 			0 < (cos(angleHead) * (*C.ptr<float>(0, 0) - head.center.x) + sin(angleHead) * (*C.ptr<float>(1, 0) - head.center.y)) ?
-				isLeftHand = false :
-				isLeftHand = true;
+				isLeftHand[i] = false :
+				isLeftHand[i] = true;
 		}
 		//isLeftHand ? cout << "left" << endl : cout << "right" << endl;
 
+		// 2本とも同じ腕の場合無視
+		if (i == 1)
+		{
+			if (isLeftHand[0] == isLeftHand[1])
+			{
+				return;
+			}
+		}
+
 		// Set hand info
-		isLeftHand ?
+		isLeftHand[i] ?
 			handL = boxHands[i] :
 			handR = boxHands[i];
+
+		isFoundFirstHand = true;
 	}
 }
 
@@ -260,6 +276,7 @@ cv::Point3f FingerTipDetector::DetectHandCenter(cv::Mat handRegion, const cv::Ro
 
 		debugPoint.x /= count;
 		debugPoint.y /= count;
+		handPoint = debugPoint;
 
 		// Debug
 		//circle(handRegion, handPoint, 4, Scalar(200, 100, 200), 3);

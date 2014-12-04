@@ -28,6 +28,8 @@ HandGestureMultiCursor::~HandGestureMultiCursor()
 	// CVのウィンドウ破棄（念のため)
 	destroyAllWindows();
 
+	// 念のためボタンアップ
+	::mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, NULL, NULL);
 }
 
 // Main loop
@@ -51,18 +53,17 @@ void HandGestureMultiCursor::run()
 		///* 4. Detect users' hand positions */
 		detectArm(blobs);
 
-		/* 5. Detect finger tips of users */
+		/* 5. Distinguish each hands of users */
 		detectHand(handRegions, headRegions);
 
 		/* 6. Calcurate pointed cursors position */
 		calcCursorPos(blobs);
 
-		/* 7.Check whether user set cursor's position by pointing gesture */
-		pointingCursorControl();
-
 		/* 7. Check cursor clicking */
 		relativeCursorControl();
 
+		/* 8. Check whether user set cursor's position by pointing gesture */
+		pointingCursorControl();
 
 		/* #. Replace previous users' informations with current data  */
 		updatePreData();
@@ -439,7 +440,7 @@ CvBlobs HandGestureMultiCursor::labelingUserArea(Mat& src)
 	// Render blobs
 	cvRenderBlobs(labelImg, blobs, &srcIpl, &srcIpl);
 
-	// Free unused IplImages
+	// Release unused IplImages
 	cvReleaseImage(&labelImg);
 	cvReleaseImage(&srcIplBinary);
 	
@@ -463,16 +464,7 @@ void HandGestureMultiCursor::detectHeadPosition(CvBlobs blobs)
 	{
 		// Define new user data
 		UserData newUserData;
-		newUserData.cursorInfo.isShownCursor = false;
-		newUserData.handInfo.isTracked = false;
-		newUserData.handInfoL.isTracked = false;
-		newUserData.handInfoR.isTracked = false;
-		newUserData.isDataFound = false;
-		newUserData.labelID = 0;
-		newUserData.preDataID = -1;
 		newUserData.labelID = it->first;
-		newUserData.centroid.x = it->second->centroid.x;
-		newUserData.centroid.y = it->second->centroid.y;
 
 		// 初期フレームはそのままユーザ追加
 		if (preLabelMat.empty())
@@ -544,6 +536,14 @@ void HandGestureMultiCursor::detectHeadPosition(CvBlobs blobs)
 					newUserData.headInfo.height = preUserData[i].headInfo.height;
 					newUserData.headInfo.depthPoint.x = preUserData[i].headInfo.depthPoint.x;
 					newUserData.headInfo.depthPoint.y = preUserData[i].headInfo.depthPoint.y;
+					newUserData.cursorInfo.stayingTime = preUserData[i].cursorInfo.stayingTime;
+					if (preUserData[i].cursorInfo.isDragging)
+					{
+						newUserData.cursorInfo.isDragging = true;
+						newUserData.cursorInfo.sPt = preUserData[i].cursorInfo.sPt;
+						newUserData.cursorInfo.cursorMove = preUserData[i].cursorInfo.cursorMove;
+						newUserData.cursorInfo.TKinect2Table = preUserData[i].cursorInfo.TKinect2Table;
+					}
 					newUserData.preDataID = i;
 					break;
 				}
@@ -762,7 +762,7 @@ void HandGestureMultiCursor::detectHand(vector<Mat> handRegions, vector<Mat> hea
 
 		if (i >= userRegions.size())
 		{
-			destroyWindow(iStr);
+			//destroyWindow(iStr);
 		}
 		else
 		{
@@ -811,11 +811,18 @@ void HandGestureMultiCursor::calcCursorPos(CvBlobs blobs)
 	for (CvBlobs::const_iterator it = blobs.begin(); it != blobs.end(); ++it) 
 	{
 		userData[blobID].cursorInfo.isShownCursor = false;
-		if (userData[blobID].handInfoR.isTracked)
+		HandInfo* handPointing = &userData[blobID].handInfoR;
+
+		if (handPointing->isTracked)
 		{
-			Mat handPoint = (cv::Mat_<float>(4, 1) << userData[blobID].handInfoR.cameraPoint.x * 1000, userData[blobID].handInfoR.cameraPoint.y * 1000, userData[blobID].handInfoR.cameraPoint.z * 1000, 1);
+			Mat handPoint = (cv::Mat_<float>(4, 1) << handPointing->cameraPoint.x * 1000, handPointing->cameraPoint.y * 1000, handPointing->cameraPoint.z * 1000, 1);
 			Mat headPoint = (cv::Mat_<float>(4, 1) << userData[blobID].headInfo.cameraPoint.x * 1000, userData[blobID].headInfo.cameraPoint.y * 1000, userData[blobID].headInfo.cameraPoint.z * 1000, 1);
 
+			// 手の位置補正(DepthとColor両カメラの座標変換行列が正しく求まっていないため) [mm]
+			*handPoint.ptr<float>(0, 0) += 100;
+			*handPoint.ptr<float>(1, 0) += 55;
+			*handPoint.ptr<float>(2, 0) -= 175;
+			
 			for (size_t i = 0; i < TKinect2Display.size(); ++i)
 			{
 				Mat handPointScreen = TKinect2Display[i] * handPoint;
@@ -841,16 +848,14 @@ void HandGestureMultiCursor::calcCursorPos(CvBlobs blobs)
 
 				//cout << cursor2d << endl;
 				// Set cursor position in pixel coordinate if the cursor is in the display
-				if (0 < *cursor2d.ptr<float>(0, 0) && *cursor2d.ptr<float>(0, 0) < VEC_WIN_WIDTH[0]
-					&& 0 < *cursor2d.ptr<float>(1, 0) && *cursor2d.ptr<float>(1, 0) < VEC_WIN_HEIGHT[0])
+				if (windowOffsetX[i] < *cursor2d.ptr<float>(0, 0) && *cursor2d.ptr<float>(0, 0) < VEC_WIN_WIDTH[i]
+					&& 0 < *cursor2d.ptr<float>(1, 0) && *cursor2d.ptr<float>(1, 0) < VEC_WIN_HEIGHT[i])
 				{
 					userData[blobID].cursorInfo.isShownCursor = true;
 					userData[blobID].cursorInfo.displayNum = i;
 					userData[blobID].cursorInfo.position.x = *cursor2d.ptr<float>(0, 0) ;
 					userData[blobID].cursorInfo.position.y = *cursor2d.ptr<float>(1, 0);
 				}
-
-
 			}
 		}
 		++blobID;
@@ -860,19 +865,18 @@ void HandGestureMultiCursor::calcCursorPos(CvBlobs blobs)
 
 void HandGestureMultiCursor::pointingCursorControl()
 {
-	const double timeLimit = 0.4;	// [sec]
+	timer.stop();
+	double addingTime = timer.getTimeSec();
 
 	// 一定時間以上ディスプレイの同じところを指さすとカーソルをそこに移動
-	for (size_t i = 0; i < 1; ++i)
-	//for (size_t i = 0; i < userData.size(); ++i)
+	//for (size_t i = 0; i < 1; ++i)
+	for (size_t i = 0; i < userData.size(); ++i)
 	{
-		
-		if (!userData[i].cursorInfo.isShownCursor) { continue; }
+		HandInfo* handPointing = &userData[i].handInfoR;
 
-		if (userData[i].preDataID < 0)
+		if (!userData[i].cursorInfo.isShownCursor || handPointing->isOnTable || !userData[i].isDataFound)
 		{
-			timer.reset();
-			timer.start();
+			userData[i].cursorInfo.stayingTime = 0.0;
 			continue;
 		}
 
@@ -881,32 +885,126 @@ void HandGestureMultiCursor::pointingCursorControl()
 			+ pow(userData[i].cursorInfo.position.y - preUserData[userData[i].preDataID].cursorInfo.position.y, 2)
 			); 
 
-		if (distance > 50)
+		if (distance < 50)
 		{
-			timer.reset();
-			timer.start();
+#ifndef ONLY_POINTIG_GESTURE
+			userData[i].cursorInfo.stayingTime += addingTime;
+			if (userData[i].cursorInfo.stayingTime > timeLimit)
+			{
+				
+				if (windowOffsetX[userData[i].cursorInfo.displayNum] < userData[i].cursorInfo.position.x && userData[i].cursorInfo.position.x < VEC_WIN_WIDTH[userData[i].cursorInfo.displayNum]
+					&& 0 < userData[i].cursorInfo.position.y && userData[i].cursorInfo.position.y < VEC_WIN_HEIGHT[userData[i].cursorInfo.displayNum])
+				{
+					SetCursor(userData[i].cursorInfo.position.x, userData[i].cursorInfo.position.y);
+					userData[i].cursorInfo.stayingTime = 0.0;
+
+					// 見やすくするためctrlキーでカーソル位置強調
+					::keybd_event(VK_CONTROL, 0, 0, 0);
+					::keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0);
+				}
+			}
+#else
+			// 常にカーソル移動する
+			if (windowOffsetX[userData[i].cursorInfo.displayNum] < userData[i].cursorInfo.position.x && userData[i].cursorInfo.position.x < VEC_WIN_WIDTH[userData[i].cursorInfo.displayNum]
+				&& 0 < userData[i].cursorInfo.position.y && userData[i].cursorInfo.position.y < VEC_WIN_HEIGHT[userData[i].cursorInfo.displayNum])
+			{
+				if (userData[i].preDataID >= 0)
+				{
+					int distance = norm(Point(
+						userData[i].cursorInfo.position.x - preUserData[userData[i].preDataID].cursorInfo.position.x,
+						userData[i].cursorInfo.position.y - preUserData[userData[i].preDataID].cursorInfo.position.y
+						));
+					if (distance < 20)
+					{
+						userData[i].cursorInfo.position = preUserData[userData[i].preDataID].cursorInfo.position;
+					}
+				}
+				SetCursor(userData[i].cursorInfo.position.x, userData[i].cursorInfo.position.y);
+
+				userData[i].cursorInfo.stayingTime += addingTime;
+			}
+#endif
+		}
+	}
+
+	timer.reset();
+	timer.start();
+}
+
+// クラス宣言
+static MouseControl mouseControl;
+void HandGestureMultiCursor::relativeCursorControl()
+{
+	for (size_t i = 0; i < userData.size(); ++i)
+	{
+		// マウスの相対位置移動を行う
+		mouseControl.moveCursorDistance(userData[i], tableParam);
+
+#if 1
+		// Debug: 腕の座標系表示
+		if (!userData[i].cursorInfo.TKinect2Table.empty())
+		{
+			HandInfo handinfo = userData[0].handInfoR;
+
+			// 現在の手の位置
+			CameraSpacePoint test;
+			test.X = handinfo.cameraPoint.x;
+			test.Y = handinfo.cameraPoint.y;
+			test.Z = handinfo.cameraPoint.z;
+			DepthSpacePoint zero1;
+			kinectBasics.GetMapper()->MapCameraPointToDepthSpace(test, &zero1);
+			circle(userAreaMat, Point(zero1.X, zero1.Y), 3, Scalar(255, 0, 255), 2);
+
+			// 原点
+			Mat zero = (Mat_<float>(4, 1) << 0, 0, 0, 1);
+			zero = userData[i].cursorInfo.TKinect2Table.inv() * zero;
+			CameraSpacePoint camera;
+			camera.X = zero.at<float>(0, 0);
+			camera.Y = zero.at<float>(1, 0);
+			camera.Z = zero.at<float>(2, 0);
+			DepthSpacePoint depthZero;
+			kinectBasics.GetMapper()->MapCameraPointToDepthSpace(camera, &depthZero);
+
+			// X
+			Mat move = (Mat_<float>(4, 1) << 0.5f, 0, 0, 1);
+			move = userData[i].cursorInfo.TKinect2Table.inv() * move;
+			camera;
+			camera.X = move.at<float>(0, 0);
+			camera.Y = move.at<float>(1, 0);
+			camera.Z = move.at<float>(2, 0);
+			DepthSpacePoint depth;
+			kinectBasics.GetMapper()->MapCameraPointToDepthSpace(camera, &depth);
+			line(userAreaMat, Point(depthZero.X, depthZero.Y), Point(depth.X, depth.Y), Scalar(0, 0, 255), 2);
+			// Y
+			move = (Mat_<float>(4, 1) << 0, 0.5f, 0, 1);
+			move = userData[i].cursorInfo.TKinect2Table.inv() * move;
+			camera.X = move.at<float>(0, 0);
+			camera.Y = move.at<float>(1, 0);
+			camera.Z = move.at<float>(2, 0);
+			kinectBasics.GetMapper()->MapCameraPointToDepthSpace(camera, &depth);
+			line(userAreaMat, Point(depthZero.X, depthZero.Y), Point(depth.X, depth.Y), Scalar(0, 255, 0), 2);
+			// Z
+			move = (Mat_<float>(4, 1) << 0, 0, 0.5f, 1);
+			move = userData[i].cursorInfo.TKinect2Table.inv() * move;
+			camera.X = move.at<float>(0, 0);
+			camera.Y = move.at<float>(1, 0);
+			camera.Z = move.at<float>(2, 0);
+			kinectBasics.GetMapper()->MapCameraPointToDepthSpace(camera, &depth);
+			line(userAreaMat, Point(depthZero.X, depthZero.Y), Point(depth.X, depth.Y), Scalar(255, 0, 0), 2);
 		}
 		else
 		{
-			timer.stop();
-			if (timer.getTimeSec() > timeLimit)
-			{
-				SetCursor(userData[i].cursorInfo.position.x, userData[i].cursorInfo.position.y);
-				timer.reset();
-			}
-			else
-			{
-				timer.start();
-			}
+			if (userData[i].handInfoR.isTracked)
+				circle(userAreaMat, userData[i].handInfoR.depthPoint, 3, Scalar(0, 255, 0), 2);
 		}
-	}
-}
 
-void HandGestureMultiCursor::relativeCursorControl()
-{
-	// マウスの相対位置移動を行う
-	//MouseControl mouseControl;
-	//mouseControl.moveCursorDistance(userData[0], tableParam);
+		if (userData[i].handInfoL.isTracked)
+		{
+			Scalar colorL = userData[i].handInfoL.isOnTable ? Scalar(255, 0, 255) : Scalar(0, 255, 0);
+			circle(userAreaMat, userData[i].handInfoL.depthPoint, 3, colorL, 2);
+		}
+#endif
+	}
 }
 
 void HandGestureMultiCursor::SetCursor(float x, float y)
@@ -928,8 +1026,8 @@ void HandGestureMultiCursor::initGL(int argc, char* argv[])
 	WinIDs = new int[TKinect2Display.size()];
 	for (size_t i = 0; i < TKinect2Display.size(); ++i)
 	{
-		glutInitWindowPosition(i*20, 0);
-		//glutInitWindowPosition(windowOffsetX[i], 0);
+		//glutInitWindowPosition(i*20, 0);
+		glutInitWindowPosition(windowOffsetX[i], 0);
 		glutInitWindowSize(VEC_WIN_WIDTH[i], VEC_WIN_HEIGHT[i]);
 
 		glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);
@@ -959,8 +1057,8 @@ void HandGestureMultiCursor::initGL(int argc, char* argv[])
 			HWND hWnd = WindowFromDC(glDc);
 			//ウィンドウの属性と位置変更
 			SetWindowLong(hWnd, GWL_STYLE, WS_POPUP);
-			//SetWindowPos(hWnd, HWND_TOP, windowOffsetX[i], 0, 100, 100, SWP_SHOWWINDOW);
-			SetWindowPos(hWnd, HWND_TOP, windowOffsetX[i], 0, VEC_WIN_WIDTH[i], VEC_WIN_HEIGHT[i], SWP_SHOWWINDOW);
+			SetWindowPos(hWnd, HWND_TOP, 0, 0, 50, 50, SWP_SHOWWINDOW);
+			//SetWindowPos(hWnd, HWND_TOP, windowOffsetX[i], 0, VEC_WIN_WIDTH[i], VEC_WIN_HEIGHT[i], SWP_SHOWWINDOW);
 		}
 	}
 }
@@ -1063,7 +1161,6 @@ void HandGestureMultiCursor::keyboard(unsigned char key, int x, int y)
 	case 'r':
 	case 'R':
 		preUserData.clear();
-
 
 		break;
 	case ' ':

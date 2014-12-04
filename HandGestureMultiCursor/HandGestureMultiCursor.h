@@ -9,23 +9,18 @@ namespace hgmc	// Start namespace hgmc
 /// <Settings> 調整可能なパラメータ
 /////////////////////////////////////////////////////////////////// 
 
-//#define USE_KINECT_V1		// Kinect v1を用いる場合はコメントを外す
-#define NEAR_MODE		// nearモードを使う場合はコメントを外す(Kinect v1のみ)
+//#define USE_KINECT_V1		// Kinect v1を用いる場合はコメントを外す 長らく使ってないので動作しないと思う
+//#define NEAR_MODE		// nearモードを使う場合はコメントを外す(Kinect v1のみ)
 
 // #define USE_COLOR_V2		// カラー画像を使用する．コメントアウトすると少し早くなる．多分．
 
+// 指差しによるカーソル移動のみを使う場合は定義する
+//#define ONLY_POINTIG_GESTURE
+
+
 // The height of Kinect which is set on the celling [mm]
-const static float KINECT_HEIGHT = 2000;		// デスクトップPC
+const static float KINECT_HEIGHT = 2000;		// ミーティングルーム
 //const static float KINECT_HEIGHT = 1800;		// mac
-
-// The threshold which detect users in the first step (The distance from the floor)
-// 最初にユーザを検出する時のしきい値(地面からの高さ)[mm]
-const static int USER_HEIGHT_THRESHOLD = 600;	// デスクトップPC
-//const static int USER_HEIGHT_THRESHOLD = 800;	// mac
-
-// The height of the desk (This separate objects and users)
-const static float DESK_HEIGHT = KINECT_HEIGHT -  1.9944671684835250e+003;	// デスクトップPC
-//const static int DESK_HEIGHT = 550;		// mac
 
 // 各座標変換行列
 const static char* dispInfo_filenames[] = {
@@ -40,7 +35,10 @@ const static std::vector<std::string> DISP_INFO_FILENAMES(std::begin(dispInfo_fi
 const static char* tableInfo_filename = { "calibData/TableInfo1.xml" };
 
 // 手を検出するための, 頭を中心とした球の半径 [m]
-const static float SENCIG_CIRCLE_RADIUS = 0.3;
+const static float SENCIG_CIRCLE_RADIUS = 0.2;
+
+// 指差しポインティング時にカーソル移動するまでの時間
+const static double timeLimit = 0.2;	// [sec]
 
 
 ///////////////////////////////////////////////////////////////////
@@ -99,35 +97,84 @@ const int SENCEING_MAX = 4000;		// 深度画像に表示する最大距離[mm]
 // Structures
 //
 // 頭に関する情報
-typedef struct {
+typedef struct HeadInfo{
 	cv::Point2i depthPoint;
 	cv::Point3f cameraPoint;
 
 	int height;	// Height from table
+
+	// Constractor
+	HeadInfo()
+	{
+		depthPoint = cv::Point2i(-1, -1);
+		cameraPoint = cv::Point3f(0.0f, 0.0f, 0.0f);
+
+		height = 0;
+	}
 } HeadInfo;
 
 // 手に関する情報
-typedef struct {
+typedef struct HandInfo{
 	cv::Point2i depthPoint;
 	cv::Point3f cameraPoint;
 	cv::Point3f centroid3f;
-	float area;
 	bool isTracked;
+	bool isOnTable;
+
+	// Constractor
+	HandInfo()
+	{
+		depthPoint = cv::Point2i(-1, -1);
+		cameraPoint = cv::Point3f(0.0f, 0.0f, 0.0f);
+		centroid3f = cv::Point3f(0.0f, 0.0f, 0.0f);
+		isTracked = false;
+		isOnTable = false;
+	}
 } HandInfo;
 
 // カーソルに関する情報
-typedef struct {
+typedef struct CursorInfo{
+	// 表示するディスプレイ番号
 	int displayNum;
+	// 現在のカーソル位置
 	cv::Point2f position;
+	// カーソルがディスプレイ範囲内にあるか
 	bool isShownCursor;
+
+	// 指さしたポインティング位置が同じ時間にとどまっている時間
+	double stayingTime; // [sec]
+
+	// クリック状態
 	bool isClicking;
-	float clickingTime; // [sec]
+	// カーソル移動中かどうか
+	bool isDragging;
+	// 基準位置（机にはじめに触れた位置）
+	POINT sPt;
+	// 基準位置から現在のマウス位置への相対移動量
+	cv::Point2i cursorMove;
+	// 机平面への座標変換行列
+	cv::Mat TKinect2Table;
+
+	// Constractor
+	CursorInfo()
+	{
+		displayNum = -1;
+		position.x = -1;
+		position.y = -1;
+		isShownCursor = false;
+		isClicking = false;
+		stayingTime = 0.0;
+		isDragging = false;
+		sPt.x = 0;
+		sPt.y = 0;
+		cursorMove = cv::Point2i(0, 0);
+	}
 } CursorInfo;
 
 //
 // Main user data stracture
 //
-typedef struct {
+typedef struct UserData{
 
 	bool isDataFound;	// 前フレームのデータとして参照するとき対応するblobが見つかったかどうか
 
@@ -140,13 +187,20 @@ typedef struct {
 	HandInfo handInfo;
 
 	// 重心
-	cv::Point2i centroid;
+	//cv::Point2i centroid;
 	unsigned long labelID;
 
 	CursorInfo cursorInfo;
 
 	int preDataID;	// For Accessing pre data
 
+	// Constractor
+	UserData()
+	{
+		isDataFound = false;
+		labelID = -1;
+		preDataID = -1;
+	}
 } UserData;
 
 
@@ -248,8 +302,8 @@ private:
 	void detectArm(cvb::CvBlobs blobs);
 	void detectHand(std::vector<cv::Mat> handRegions, std::vector<cv::Mat> headRegions);
 	void calcCursorPos(cvb::CvBlobs blobs);
-	void pointingCursorControl();
 	void relativeCursorControl();
+	void pointingCursorControl();
 	void updatePreData();
 
 
@@ -268,14 +322,7 @@ private:
 // クラス宣言
 extern HandGestureMultiCursor app;
 extern KinectV2Basics kinectBasics;
-
-/* Kinect_v2 */
-// Sensor
-//static IKinectSensor* pSensor;
-//// Reader: Depth dataを保管するストリーム
-//static IDepthFrameReader* pDepthReader;
-//// CoordinateMapper
-//static ICoordinateMapper* pCoordinateMapper;
+//extern MouseControl mouseControl;
 
 #ifdef USE_COLOR_V2
 // Reader: Color dataを保管するストリーム

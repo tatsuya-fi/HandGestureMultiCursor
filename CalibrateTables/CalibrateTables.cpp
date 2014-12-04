@@ -406,7 +406,15 @@ void calibTable(const KinectV2Basics kinect, cv::Mat& showImg, cv::Mat& pointClo
 		}
 	}
 
-	cout << "Click table area and press c to calcurate plane parameters." << endl;
+	// Show help
+	//cout << "Click table area and press c to calcurate plane parameters." << endl;
+	std::ostringstream os;
+	os << "Click table area and press c to calcurate plane parameters.";
+	String str = os.str();
+	Mat showImgColorBuf = showImgColor.clone();
+	putText(showImgColorBuf, str, Point(1, 28), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255), 1, CV_AA);
+	imshow(windowName, showImgColorBuf);
+
 	vector<Point3f> tablePoints;
 	const int offset = 5;	// [pixel]
 	while (1)
@@ -444,7 +452,9 @@ void calibTable(const KinectV2Basics kinect, cv::Mat& showImg, cv::Mat& pointClo
 					tablePoints.push_back(addPoint);
 				}
 			}
-			imshow(windowName, showImgColor);
+			showImgColorBuf = showImgColor.clone();
+			putText(showImgColorBuf, str, Point(1, 28), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255), 1, CV_AA);
+			imshow(windowName, showImgColorBuf);
 		}
 
 		switch (waitKey(20))
@@ -455,7 +465,17 @@ void calibTable(const KinectV2Basics kinect, cv::Mat& showImg, cv::Mat& pointClo
 			Mat planeParam = calcPlaneParam(tablePoints);
 			cout << planeParam << endl;
 			if (planeParam.empty()) { continue; }
+			
+			// Draw plane area
 			drawPlane(showImgColor, planeParam, pointCloud);
+			std::ostringstream os1, os2;
+			os1 << "Parameter is saved.";
+			os2 << "Press ESC key to quit or click table area and calibrate again";
+			String str1 = os1.str();
+			putText(showImgColor, str1, Point(2, 28), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255), 1, CV_AA);
+			str1 = os2.str();
+			putText(showImgColor, str1, Point(2, 56), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255), 1, CV_AA);
+
 			imshow(windowName, showImgColor);
 			tablePoints.clear();
 			showImgColor = Mat::zeros(showImg.rows, showImg.cols, CV_8UC3);
@@ -493,14 +513,19 @@ int _tmain(int argc, _TCHAR* argv[])
 	setMouseCallback(windowName, onMouse, 0);
 
 	// Š÷‚Ìî•ñ‚ðŽæ“¾‚·‚éƒtƒŒ[ƒ€‚ðŒˆ’è‚·‚é
-	cout << "Press Space key for deciding frame." << endl;
+	std::ostringstream os;
+	os << "Press Space key for deciding frame.";
+	String str = os.str();
+
 	while (1)
 	{
 		Mat showImg, depthMat, pointCloud;
 		kinectV2Basics.GetDepthMat(showImg, depthMat, pointCloud);
 		if (!showImg.empty())
 		{
-			imshow(windowName, showImg);
+			Mat showImgBuf = showImg.clone();
+			putText(showImgBuf, str, Point(1, 28), cv::FONT_HERSHEY_SIMPLEX, 0.5, 0, 1, CV_AA);
+			imshow(windowName, showImgBuf);
 		}
 
 		switch (waitKey(20))

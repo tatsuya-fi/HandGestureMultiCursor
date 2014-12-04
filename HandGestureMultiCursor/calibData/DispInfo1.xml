@@ -26,3 +26,5 @@
 </opencv_storage>
 <!-- 前方ディスプレイ -->
 <!-- T_Kinect2Display, Hの順で入れる -->
+<!-- <WindowWidth>2560</WindowWidth> -->
+<!-- <WindowHeight>1024</WindowHeight> -->
