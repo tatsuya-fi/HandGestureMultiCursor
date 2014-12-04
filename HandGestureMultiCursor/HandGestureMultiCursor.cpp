@@ -30,6 +30,7 @@ HandGestureMultiCursor::~HandGestureMultiCursor()
 
 	// 念のためボタンアップ
 	::mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, NULL, NULL);
+	::keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0);
 }
 
 // Main loop
@@ -317,8 +318,9 @@ bool HandGestureMultiCursor::getDepthImageV2()
 	// Denoising by median filter
 	//medianBlur(userAreaMat, userAreaMat, 5);
 
-	erode(userAreaMat, userAreaMat, Mat(), Point(-1, -1), 3);
-	dilate(userAreaMat, userAreaMat, Mat(), Point(-1, -1), 4);
+	erode(userAreaMat, userAreaMat, Mat(), Point(-1, -1), 1);
+	dilate(userAreaMat, userAreaMat, Mat(), Point(-1, -1), 1);
+	//medianBlur(userAreaMat, userAreaMat, 3);
 
 	return true;
 }
@@ -355,7 +357,7 @@ void HandGestureMultiCursor::showDebugWindows()
 	if (!userAreaMat.empty()) { imshow("Hand/Head detection", userAreaMat); }
 
 #ifndef USE_KINECT_V1
-	if (!depthImage.empty()) { imshow("Depth image", depthImage); }	// 今はKinect2のみ
+	//if (!depthImage.empty()) { imshow("Depth image", depthImage); }	// 今はKinect2のみ
 #endif
 
 #ifdef USE_COLOR_V2
@@ -456,6 +458,20 @@ CvBlobs HandGestureMultiCursor::labelingUserArea(Mat& src)
 	cvReleaseImage(&labelImg);
 	cvReleaseImage(&srcIplBinary);
 
+	for (int y = 0; y < kinectBasics.heightDepth; ++y)
+	{
+		for (int x = 0; x < kinectBasics.widthDepth; ++x)
+		{
+			if (labelMat.ptr<uchar>(y, x) <= 0)
+			{
+				int index = ((y * kinectBasics.widthDepth) + x) * 3;
+				UCHAR* dataDepth = &userAreaMat.data[index];
+				dataDepth[0] = 0;
+				dataDepth[1] = 0;
+				dataDepth[2] = 0;
+			}
+		}
+	}	
 
 	return blobs;
 }

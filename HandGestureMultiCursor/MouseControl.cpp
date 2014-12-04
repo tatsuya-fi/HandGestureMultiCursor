@@ -169,10 +169,10 @@ DWORD MouseControl::checkClicking(hgmc::CursorInfo& cursorInfo, hgmc::HandInfo& 
 	if (!handInfo.isTracked)
 	{
 		DWORD flag;
-		cursorInfo.isClicking ? flag = MOUSEEVENTF_LEFTUP : flag = 0;
+		cursorInfo.isClicking ? flag = MOUSEEVENTF_LEFTUP : flag = NULL;
 		cursorInfo.isClicking = false;
 		handInfo.isOnTable = false;
-		return 0;
+		return flag;
 	}
 
 	float distance = abs(

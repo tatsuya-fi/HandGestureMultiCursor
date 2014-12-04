@@ -96,7 +96,7 @@ void FingerTipDetector::FindHands(cv::Mat& handRegion, cv::Mat& headRegion, cv::
 	for (int i = 0; i < contoursHand.size(); ++i)
 	{
 		size_t count = contoursHand[i].size();
-		if (count < 50 || count > 500) { continue; }
+		if (count < 120 || count > 500) { continue; }
 
 		int id = i;
 		if (count > handCount[0])
@@ -124,8 +124,6 @@ void FingerTipDetector::FindHands(cv::Mat& handRegion, cv::Mat& headRegion, cv::
 		Mat(contoursHand[handID[i]]).convertTo(pointsf, CV_32F);
 		// ë»â~ÉtÉBÉbÉeÉBÉìÉO
 		boxHands[i] = cv::fitEllipse(pointsf);
-		// ë»â~ÇÃï`âÊ
-		ellipse(handRegion, boxHands[i], cv::Scalar(0, 0, 255), 2, CV_AA);
 	}
 
 	bool isLeftHand[2] = { true, true };
@@ -133,7 +131,12 @@ void FingerTipDetector::FindHands(cv::Mat& handRegion, cv::Mat& headRegion, cv::
 	bool isFoundFirstHand = false;
 	for (int i = 0; i < 2; ++i)
 	{
-		if (boxHands[i].size.width <= 0 || boxHands[i].size.height <= 0) { continue; }
+		// åüèoÉ~ÉXÇ…ÇÊÇÈÉmÉCÉYèúãé
+		if (boxHands[i].size.width <= 0 || boxHands[i].size.height <= 0
+			|| boxHands[i].size.height / boxHands[i].size.width < 2.5)	// â~Ç…ãﬂÇ¢Ç‡ÇÃÇÕòrÇ∆Ç›Ç»Ç≥Ç»Ç¢
+		{
+			continue;
+		}
 
 		// ë»â~ÇÃâÒì]äp [pi]
 		float angleHead = (head.angle - 90.0f) / 180.0f * M_PI;
@@ -181,7 +184,7 @@ void FingerTipDetector::FindHands(cv::Mat& handRegion, cv::Mat& headRegion, cv::
 				isLeftHand[i] = false :
 				isLeftHand[i] = true;
 		}
-		//isLeftHand ? cout << "left" << endl : cout << "right" << endl;
+		isLeftHand ? cout << "left" << endl : cout << "right" << endl;
 
 		// 2ñ{Ç∆Ç‡ìØÇ∂òrÇÃèÍçáñ≥éã
 		if (i == 1)
@@ -240,20 +243,21 @@ cv::Point3f FingerTipDetector::DetectHandCenter(cv::Mat handRegion, const cv::Ro
 	}
 
 	// Calc centroid of the hand
-	const int offset = 70;
+	const int offset = 50;
 	Point3f aveHand; aveHand.x = 0; aveHand.y = 0; aveHand.z = 0;
 	Point2i debugPoint;
 	int count = 0;
 	for (int y = handPoint.y - offset / 2; y < handPoint.y + offset / 2; ++y)
 	{
-		if (y < 0 || y < hand.boundingRect().tl().y) { continue; }
-		else if (y > handRegion.rows || y > hand.boundingRect().br().y) { break; }
+		if (y < 0 || kinectBasics.heightDepth < y) { continue; }
+		//else if (y > handRegion.rows || y > hand.boundingRect().br().y) { break; }
 		for (int x = handPoint.x - offset / 2; x < handPoint.x + offset / 2; ++x)
 		{
-			if (x < 0 || x < hand.boundingRect().tl().x) { continue; }
-			else if (x > handRegion.cols || x > hand.boundingRect().br().x) { break; }
+			if (x < 0 || kinectBasics.widthDepth < x) { continue; }
+			//else if (x > handRegion.cols || x > hand.boundingRect().br().x) { break; }
 
-			if (handRegion.at<Vec3b>(y, x)[1] > 0 && cameraPoints.ptr<float>(y, x)[0] > -1 * KINECT_HEIGHT)
+			if (handRegion.at<Vec3b>(y, x)[0] == 255 && handRegion.at<Vec3b>(y, x)[1] == 255 && handRegion.at<Vec3b>(y, x)[2] == 255
+				&& 0.4 < cameraPoints.ptr<float>(y, x)[2] && cameraPoints.ptr<float>(y, x)[2] < KINECT_HEIGHT)
 			{
 				//circle(handRegion, Point(x, y), 1, Scalar(0, 0, 200), -1);
 				aveHand.x += cameraPoints.ptr<float>(y, x)[0];
@@ -279,7 +283,11 @@ cv::Point3f FingerTipDetector::DetectHandCenter(cv::Mat handRegion, const cv::Ro
 		handPoint = debugPoint;
 
 		// Debug
+		// òróÃàÊ
+		ellipse(handRegion, hand, cv::Scalar(0, 0, 255), 2, CV_AA);
+		// òrÇÃêÊ
 		//circle(handRegion, handPoint, 4, Scalar(200, 100, 200), 3);
+		// éËíÜêS
 		circle(handRegion, debugPoint, 4, Scalar(200, 100, 100), 3);
 
 		return aveHand;

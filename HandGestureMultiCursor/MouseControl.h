@@ -21,7 +21,7 @@ public:
 
 private:
 	// 手と机との接触判定のためのしきい値
-	const float threshold = 0.0425;		// [m]
+	const float threshold = 0.045;		// [m]
 
 	// ドラッグ開始位置
 	//POINT sPt;

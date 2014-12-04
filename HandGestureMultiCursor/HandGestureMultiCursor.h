@@ -35,7 +35,7 @@ const static std::vector<std::string> DISP_INFO_FILENAMES(std::begin(dispInfo_fi
 const static char* tableInfo_filename = { "calibData/TableInfo1.xml" };
 
 // 手を検出するための, 頭を中心とした球の半径 [m]
-const static float SENCIG_CIRCLE_RADIUS = 0.2;
+const static float SENCIG_CIRCLE_RADIUS = 0.25;
 
 // 指差しポインティング時にカーソル移動するまでの時間
 const static double timeLimit = 0.2;	// [sec]
@@ -47,7 +47,7 @@ const static double timeLimit = 0.2;	// [sec]
 
 
 // Threshold for separating table and user [mm]
-const static float TABLE_THRESHOLD = 30;
+const static float TABLE_THRESHOLD = 10;
 
 // Maximum height of the users [mm]
 const static float HEAD_HEIGHT_MAX = 2400;
