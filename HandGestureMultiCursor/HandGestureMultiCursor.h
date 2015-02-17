@@ -9,7 +9,7 @@ namespace hgmc	// Start namespace hgmc
 /// <Settings> 調整可能なパラメータ
 /////////////////////////////////////////////////////////////////// 
 
-//#define USE_KINECT_V1		// Kinect v1を用いる場合はコメントを外す 長らく使ってないので動作しないと思う
+//#define USE_KINECT_V1		// Kinect v1を用いる場合はコメントを外す 動作しない使用禁止 Don't use
 //#define NEAR_MODE		// nearモードを使う場合はコメントを外す(Kinect v1のみ)
 
 // #define USE_COLOR_V2		// カラー画像を使用する．コメントアウトすると少し早くなる．多分．
@@ -17,33 +17,39 @@ namespace hgmc	// Start namespace hgmc
 // 指差しによるカーソル移動のみを使う場合は定義する
 //#define ONLY_POINTIG_GESTURE
 
-
 // The height of Kinect which is set on the celling [mm]
 const static float KINECT_HEIGHT = 2000;		// ミーティングルーム
 //const static float KINECT_HEIGHT = 1800;		// mac
 
-// 各座標変換行列
+
+// 各ディスプレイへの座標変換行列を格納したファイル
 const static char* dispInfo_filenames[] = {
 	"calibData/DispInfo1.xml"
-	//,"calibData/DispInfo2.xml"
+	, "calibData/DispInfo2.xml"
+	, "calibData/DispInfo3.xml"
 };
 const static std::vector<std::string> DISP_INFO_FILENAMES(std::begin(dispInfo_filenames), std::end(dispInfo_filenames));
 
+
+// 相対操作を行うテーブルのパラメータ(CalibrateTablesで作成)
 //const static char* tableInfo_filenames[] = {
 //
 //};
 const static char* tableInfo_filename = { "calibData/TableInfo1.xml" };
 
 // 手を検出するための, 頭を中心とした球の半径 [m]
-const static float SENCIG_CIRCLE_RADIUS = 0.25;
+const static float SENCIG_CIRCLE_RADIUS = 0.3;
 
 // 指差しポインティング時にカーソル移動するまでの時間
-const static double timeLimit = 0.2;	// [sec]
+const static double timeLimit = 0.f;	// [sec]
 
+// 過去何フレームを指差しポインティング位置の平滑化に使うか（ジッター防止用）
+const int preCursor2dNumMax = 10;
 
 ///////////////////////////////////////////////////////////////////
 /// </Settings>
 ///////////////////////////////////////////////////////////////////
+
 
 
 // Threshold for separating table and user [mm]
@@ -101,7 +107,7 @@ typedef struct HeadInfo{
 	cv::Point2i depthPoint;
 	cv::Point3f cameraPoint;
 
-	int height;	// Height from table
+	//int height;	// Height from table
 
 	// Constractor
 	HeadInfo()
@@ -109,7 +115,7 @@ typedef struct HeadInfo{
 		depthPoint = cv::Point2i(-1, -1);
 		cameraPoint = cv::Point3f(0.0f, 0.0f, 0.0f);
 
-		height = 0;
+		//height = 0;
 	}
 } HeadInfo;
 
@@ -144,6 +150,9 @@ typedef struct CursorInfo{
 	// 指さしたポインティング位置が同じ時間にとどまっている時間
 	double stayingTime; // [sec]
 
+	// ジッター防止用に過去のカーソル位置を保存しておく
+	std::list<cv::Point2f> preCursor2d;
+
 	// クリック状態
 	bool isClicking;
 	// カーソル移動中かどうか
@@ -154,6 +163,7 @@ typedef struct CursorInfo{
 	cv::Point2i cursorMove;
 	// 机平面への座標変換行列
 	cv::Mat TKinect2Table;
+	cv::Mat preTKinect2Table;
 
 	// Constractor
 	CursorInfo()
@@ -183,8 +193,9 @@ typedef struct UserData{
 	// Will use this
 	HandInfo handInfoR;
 	HandInfo handInfoL;
+	bool isArmTracked;
 	// Will delete
-	HandInfo handInfo;
+	//HandInfo handInfo;
 
 	// 重心
 	//cv::Point2i centroid;
@@ -198,12 +209,19 @@ typedef struct UserData{
 	UserData()
 	{
 		isDataFound = false;
+		isArmTracked = false;
 		labelID = -1;
 		preDataID = -1;
 	}
 } UserData;
 
 
+// ポインティングによる絶対座標指定の有効無効
+enum
+{
+	POINTING_ENABLE,
+	POINTING_DISABLE
+};
 
 }	// End of namespace hgmc
 
@@ -254,6 +272,7 @@ private:
 	cv::Mat heightFromTable;// Heights of each pixel from table
 
 	cv::Mat depthImage;		// Image from kinect depth camera
+	cv::Mat infraredImage;		// Image from kinect infrared camera (same with depth camera)
 	cv::Mat rgbImage;		// Image from kinect color camera
 
 	std::vector<cv::Mat> handRegions;
@@ -265,6 +284,7 @@ private:
 	std::vector<int> windowOffsetX;	// マルチディスプレイ表示の際，他のディスプレイを考慮した座標値を求めるために使う
 
 	cv::Mat tableParam;	// テーブル平面を表すパラメータ
+	cv::Mat tableCorners; // テーブルのコーナー[pixel]を格納
 
 	// Informations of each users
 	//UserData userData;
@@ -278,6 +298,9 @@ private:
 	int fpsCount = 0;
 
 	bool isCursorMoving = true;
+
+	int pointingControlMode = hgmc::POINTING_ENABLE;
+	int relativeControlMode;
 
 #ifdef USE_KINECT_V1
 	/* Handles for kinect v1 */
@@ -293,6 +316,7 @@ private:
 #endif
 	/* Functions for kinect v2*/
 	bool getDepthImageV2();
+	bool getInfraredImageV2();
 	void getRgbImageV2();
 
 	/* Other Functions */
@@ -311,12 +335,26 @@ private:
 	bool isShowDebugWindows;
 	void showDebugWindows();
 
+	int togglePointingMode();
 
 	/* OpenGL */
 	int* WinIDs;
 
 	void SetCursor(float x, float y);
 
+	// aX+bY+cZ+d=0平面と(_x, _y, _z)の距離を求める
+	inline float DistanceFromPlane(float a, float b, float c, float d, float _x, float _y, float _z)
+	{
+		float distance = abs(a*_x + b*_y + c*_z + d) / sqrt(a*a + b*b + c*c);
+		return distance;
+	}
+
+	inline void ErrorExit()
+	{
+		std::cout << "Press any key for exit." << std::endl;
+		getchar();
+		exit(0);
+	}
 };
 
 // クラス宣言

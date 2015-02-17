@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<opencv_storage>
+<WindowNum>2</WindowNum>
+<WindowWidth>2560</WindowWidth>
+<WindowHeight>1024</WindowHeight>
+<mat_array>
+  <_ type_id="opencv-matrix">
+  <rows>4</rows>
+  <cols>4</cols>
+  <dt>f</dt>
+  <data>
+    9.98048246e-001 -4.08624671e-002 -4.72201779e-002 7.67334961e+002
+      -4.45400029e-002 6.41856194e-002 -9.96943414e-001 1.39249377e+003
+      4.37684432e-002 9.97101068e-001 6.22403920e-002 2.25493042e+002 0.
+      0. 0. 1.</data></_>
+  <_ type_id="opencv-matrix">
+  <rows>3</rows>
+  <cols>3</cols>
+  <dt>f</dt>
+  <data>
+  20.3037174050906999e-001 -27.0210416896148360e-002 2.3260545343324666e+003
+  -4.2370606912585852e-002 -18.9436080665014768e-001 9.5806857317632659e+002
+  -14.9601840276255713e-006 -5.0814082690516337e-005 1.</data></_></mat_array>
+</opencv_storage>
+<!-- 前方ディスプレイ -->
+<!-- T_Kinect2Display, Hの順で入れる -->
+<!-- <WindowWidth>2560</WindowWidth> -->
+<!-- <WindowHeight>1024</WindowHeight> -->

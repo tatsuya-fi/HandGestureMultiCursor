@@ -13,11 +13,15 @@
 #define _USE_MATH_DEFINES	// For using M_PI
 #include <cmath>
 
+
 // TODO: プログラムに必要な追加ヘッダーをここで参照してください。
 #include <list>
 #include "MyLib.h"
 #include "cvblob.h"
 #include "KinectV2Basics.h"
+
+
 #include "HandGestureMultiCursor.h"
+
 #include "FingerTipDetector.h"
 #include "MouseControl.h"

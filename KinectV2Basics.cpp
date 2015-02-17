@@ -190,7 +190,7 @@ bool KinectV2Basics::GetDepthMat(Mat& outDepth8U, Mat& outDepth16U)
 {
 	if (GetDepthMat(outDepth16U))
 	{
-		outDepth16U.convertTo(outDepth8U, CV_8U, -255.0f / 4500.0f, 255.0f);
+		outDepth16U.convertTo(outDepth8U, CV_8U, -225.0f / 4500.0f, 255.0f);
 		return true;
 	}
 	else

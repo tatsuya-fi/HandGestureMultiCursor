@@ -4,9 +4,7 @@
 using namespace std;
 using namespace cv;
 
-KinectV2Basics::KinectV2Basics():
-isUseDepth(true),
-isUseColor(true)
+KinectV2Basics::KinectV2Basics()
 {
 }
 
@@ -87,6 +85,25 @@ bool KinectV2Basics::SetupKinectV2()
 		}
 	}
 
+	// Source(Infrared)
+	hResult = pSensor->get_InfraredFrameSource(&pInfraredSource);
+	if (FAILED(hResult))
+	{
+		cerr << "Error : IKinectSensor::get_ColorFrameSource()" << endl;
+		return false;
+	}
+
+	// Reader(Infrared)
+	hResult = pInfraredSource->OpenReader(&pInfraredReader);
+	if (FAILED(hResult))
+	{
+		cerr << "Error : IColorFrameSource::OpenReader()" << endl;
+		return false;
+	}
+
+	// ÉoÉbÉtÉ@Å[ÇçÏê¨Ç∑ÇÈ
+	infraredBuffer.resize(widthInfrared * heightInfrared);
+
 	// Mapper
 	hResult = pSensor->get_CoordinateMapper(&pCoordinateMapper);
 	if (FAILED(hResult))
@@ -142,62 +159,9 @@ ICoordinateMapper* KinectV2Basics::GetMapper()
 }
 
 //--------------------------------------------------
-// OpenCVÇópÇ¢ÇΩÉÅÉ\ÉbÉh
+// Methods which use OpenCV
 
 #ifdef OPENCV
-
-bool KinectV2Basics::GetDepthMat(Mat& outDepth16U)
-{
-	if (!isUseDepth)
-	{
-		cout << "Error(GetDepthMat()): Depth stream is not working. Enable it by using SelectUsingData()." << endl;
-		exit(-1);
-	}
-
-	unsigned int bufferSize = widthDepth * heightDepth * sizeof(unsigned short);
-	Mat bufferMat(heightDepth, widthDepth, CV_16SC1);
-
-	HRESULT hResult = S_OK;
-	SafeRelease(pDepthFrame);
-	hResult = pDepthReader->AcquireLatestFrame(&pDepthFrame);
-	if (SUCCEEDED(hResult))
-	{
-		hResult = pDepthFrame->AccessUnderlyingBuffer(&bufferSize, reinterpret_cast<UINT16**>(&bufferMat.data));
-		// yé≤Ç…ëŒÇµÇƒîΩì]...ÇµÇ»Ç¢ÅI
-		Mat bufferMatFlip = bufferMat.clone();
-		//flip(bufferMat, bufferMatFlip, 1);
-		if (SUCCEEDED(hResult))
-		{
-			// Zé≤ãóó£Çäiî[
-			outDepth16U = bufferMatFlip;
-		}
-		else
-		{
-			//cerr << "Error : IDepthFrameSource::AccessUnderlyingBuffer()" << endl;
-			return false;
-		}
-	}
-	else
-	{
-		//cerr << "Error : IDepthFrame::AcquireLatestFrame()" << endl;
-		return false;
-	}
-
-	return true;
-}
-
-bool KinectV2Basics::GetDepthMat(Mat& outDepth8U, Mat& outDepth16U)
-{
-	if (GetDepthMat(outDepth16U))
-	{
-		outDepth16U.convertTo(outDepth8U, CV_8U, -225.0f / 4500.0f, 255.0f);
-		return true;
-	}
-	else
-	{
-		return false;
-	}
-}
 
 bool KinectV2Basics::GetDepthMat(cv::Mat& outDepth8U, cv::Mat& outDepth16U, cv::Mat& outPoints32FC3)
 {
@@ -244,6 +208,53 @@ bool KinectV2Basics::GetDepthMat(cv::Mat& outDepth8U, cv::Mat& outDepth16U, cv::
 	}
 }
 
+bool KinectV2Basics::GetDepthMat(Mat& outDepth8U, Mat& outDepth16S)
+{
+	if (GetDepthMat(outDepth16S))
+	{
+		outDepth16S.convertTo(outDepth8U, CV_8U, -225.0f / 4500.0f, 255.0f);
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+}
+
+bool KinectV2Basics::GetDepthMat(Mat& outDepth16S)
+{
+	unsigned int bufferSize = widthDepth * heightDepth * sizeof(unsigned short);
+	Mat bufferMat(heightDepth, widthDepth, CV_16SC1);
+
+	HRESULT hResult = S_OK;
+	SafeRelease(pDepthFrame);
+	hResult = pDepthReader->AcquireLatestFrame(&pDepthFrame);
+	if (SUCCEEDED(hResult))
+	{
+		hResult = pDepthFrame->AccessUnderlyingBuffer(&bufferSize, reinterpret_cast<UINT16**>(&bufferMat.data));
+		// yé≤Ç…ëŒÇµÇƒîΩì]...ÇµÇ»Ç¢ÅI
+		Mat bufferMatFlip = bufferMat.clone();
+		//flip(bufferMat, bufferMatFlip, 1);
+		if (SUCCEEDED(hResult))
+		{
+			// Zé≤ãóó£Çäiî[
+			outDepth16S = bufferMatFlip;
+		}
+		else
+		{
+			//cerr << "Error : IDepthFrameSource::AccessUnderlyingBuffer()" << endl;
+			return false;
+		}
+	}
+	else
+	{
+		//cerr << "Error : IDepthFrame::AcquireLatestFrame()" << endl;
+		return false;
+	}
+
+	return true;
+}
+
 bool KinectV2Basics::GetPointsMat(Mat& pointsMat)
 {
 	// Init
@@ -285,12 +296,6 @@ bool KinectV2Basics::GetPointsMat(Mat& pointsMat)
 
 bool KinectV2Basics::GetColorMat(cv::Mat& outColor)
 {
-	if (!isUseColor)
-	{
-		cout << "Error(GetColorMat()): Color stream is not working. Enable it by using SelectUsingData()." << endl;
-		exit(-1);
-	}
-
 	unsigned int bufferSize = widthColor * heightColor * 4 * sizeof(unsigned char);
 	Mat colorMat(heightColor, widthColor, CV_8UC4);
 
@@ -298,9 +303,9 @@ bool KinectV2Basics::GetColorMat(cv::Mat& outColor)
 	if (SUCCEEDED(hResult))
 	{
 		hResult = pColorFrame->CopyConvertedFrameDataToArray(bufferSize, reinterpret_cast<BYTE*>(colorMat.data), ColorImageFormat_Bgra);
-		Mat colorMat2;
-		// yé≤Ç…ëŒÇµÇƒîΩì]Ç≥ÇπÇÈ
-		flip(colorMat, colorMat2, 1);
+		Mat colorMat2 = colorMat;
+		// yé≤Ç…ëŒÇµÇƒîΩì]...ÇµÇ»Ç¢ÅI
+		//flip(colorMat, colorMat2, 1);
 		if (SUCCEEDED(hResult))
 		{
 			// ÉJÉâÅ[âÊëúÇäiî[
@@ -334,6 +339,79 @@ bool KinectV2Basics::GetColorMat(cv::Mat& outColor, float scale)
 	{
 		return false;
 	}
+}
+
+bool KinectV2Basics::GetInfraredMat(cv::Mat& outInfrared)
+{
+	unsigned int bufferSize = widthInfrared * heightInfrared * 4 * sizeof(unsigned char);
+	Mat outInfraredBuf = Mat::zeros(heightInfrared, widthInfrared, CV_8UC4);
+	Mat bufferMat(heightDepth, widthDepth, CV_16SC1);
+
+	UINT nBufferSize = 0;
+	UINT16 *pBuffer = NULL;
+
+	HRESULT hResult = pInfraredReader->AcquireLatestFrame(&pInfraredFrame);
+	if (SUCCEEDED(hResult))
+	{
+		hResult = pInfraredFrame->AccessUnderlyingBuffer(&nBufferSize, &pBuffer);
+		//hResult = pInfraredFrame->CopyFrameDataToArray(infraredBuffer.size(), reinterpret_cast<UINT16*>(bufferMat.data));
+		//Mat colorMat2 = colorMat;
+		// yé≤Ç…ëŒÇµÇƒîΩì]...ÇµÇ»Ç¢ÅI
+		//flip(colorMat, colorMat2, 1);
+		if (SUCCEEDED(hResult))
+		{
+			for (int y = 0; y < heightInfrared; ++y)
+			{
+				for (int x = 0; x < widthInfrared; ++x)
+				{
+					// normalize the incoming infrared data (ushort) to a float ranging from 
+					// [InfraredOutputValueMinimum, InfraredOutputValueMaximum] by
+					// 1. dividing the incoming value by the source maximum value
+					float intensityRatio = static_cast<float>(*pBuffer) / InfraredSourceValueMaximum;
+
+					// 2. dividing by the (average scene value * standard deviations)
+					intensityRatio /= InfraredSceneValueAverage * InfraredSceneStandardDeviations;
+
+					// 3. limiting the value to InfraredOutputValueMaximum
+					intensityRatio = min(InfraredOutputValueMaximum, intensityRatio);
+
+					// 4. limiting the lower value InfraredOutputValueMinimym
+					intensityRatio = max(InfraredOutputValueMinimum, intensityRatio);
+
+					// 5. converting the normalized value to a byte and using the result
+					// as the RGB components required by the image
+					byte intensity = static_cast<byte>(intensityRatio * 255.0f);
+
+					int index = (y * widthInfrared + x) * 4;
+					UCHAR* dataInfrared = &outInfraredBuf.data[index];
+					dataInfrared[0] = intensity;
+					dataInfrared[1] = intensity;
+					dataInfrared[2] = intensity;
+					dataInfrared[3] = 1;
+
+					++pBuffer;
+				}
+			}
+
+			//flip(outInfrared, outInfrared, 1);
+			outInfrared = outInfraredBuf.clone();
+
+			SafeRelease(pInfraredFrame);
+			return true;
+
+		}
+		else
+		{
+			//cerr << "Error: IColorFrame::CopyConvertedFrameDataToArray()" << endl;
+			return false;
+		}
+	}
+	else
+	{
+		//cerr << "Error: IColorFrameReader::AcquireLatestFrame()" << endl;
+		return false;
+	}
+
 }
 
 #endif

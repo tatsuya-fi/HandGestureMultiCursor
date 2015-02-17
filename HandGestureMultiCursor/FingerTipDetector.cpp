@@ -23,24 +23,30 @@ cv::Mat FingerTipDetector::GetHandInfo(cv::Mat& handRegion, cv::Mat& headRegion,
 	erode(handRegionBuf, handRegionBuf, Mat(), Point(-1, -1), 1);
 	dilate(handRegionBuf, handRegionBuf, Mat(), Point(-1, -1), 2);
 
-	RotatedRect handL, handR, head;
+	RotatedRect handR, handL, head;
 	FindHands(handRegionBuf, headRegionBuf, handR, handL, head);
 
 	// 手を認識出来たか判定
-	handInfoR.isTracked = (handR.size.width == 0 || handR.size.height == 0) ? false : true;
-	handInfoL.isTracked = (handL.size.width == 0 || handL.size.height == 0) ? false : true;
+	handInfoR.isTracked = (handR.size.width <= 0 || handR.size.height <= 0) ? false : true;
+	handInfoL.isTracked = (handL.size.width <= 0 || handL.size.height <= 0) ? false : true;
 
-	// 手の座標値(2次元, 3次元共に)取得
-	handInfoR.cameraPoint = DetectHandCenter(handRegionBuf, handR, head, cameraSpacePoints, handInfoR.depthPoint);
-	handInfoL.cameraPoint = DetectHandCenter(handRegionBuf, handL, head, cameraSpacePoints, handInfoL.depthPoint);
-
-	// 手領域の座標値もとっておく
-	handInfoR.centroid3f = Point3f(cameraSpacePoints.ptr<float>(handR.center.y, handR.center.x)[0], cameraSpacePoints.ptr<float>(handR.center.y, handR.center.x)[1], cameraSpacePoints.ptr<float>(handR.center.y, handR.center.x)[2]);
-	handInfoL.centroid3f = Point3f(cameraSpacePoints.ptr<float>(handL.center.y, handL.center.x)[0], cameraSpacePoints.ptr<float>(handL.center.y, handL.center.x)[1], cameraSpacePoints.ptr<float>(handL.center.y, handL.center.x)[2]);
+	// 手の座標値(2次元, 3次元)，手領域の重心を取得
+	if (handInfoR.isTracked)
+	{
+		handInfoR.cameraPoint = DetectHandCenter(handRegionBuf, handR, head, cameraSpacePoints, handInfoR.depthPoint);
+		handInfoR.centroid3f = Point3f(cameraSpacePoints.ptr<float>(handR.center.y, handR.center.x)[0], cameraSpacePoints.ptr<float>(handR.center.y, handR.center.x)[1], cameraSpacePoints.ptr<float>(handR.center.y, handR.center.x)[2]);
+	}
+	if (handInfoL.isTracked)
+	{
+		handInfoL.cameraPoint = DetectHandCenter(handRegionBuf, handL, head, cameraSpacePoints, handInfoL.depthPoint);
+		handInfoL.centroid3f = Point3f(cameraSpacePoints.ptr<float>(handL.center.y, handL.center.x)[0], cameraSpacePoints.ptr<float>(handL.center.y, handL.center.x)[1], cameraSpacePoints.ptr<float>(handL.center.y, handL.center.x)[2]);
+	}
 	
 	// Debug表示用の画像作成
 	Mat userArea = handRegionBuf + headRegionBuf;
-
+	//if (!headRegionBuf.empty()) imshow("test1 ", headRegionBuf);
+	//if (!handRegionBuf.empty()) imshow("test2 ", handRegionBuf);
+	//if (!userArea.empty()) imshow("test ", userArea);
 	return userArea;
 }
 
@@ -78,7 +84,11 @@ void FingerTipDetector::FindHands(cv::Mat& handRegion, cv::Mat& headRegion, cv::
 		head = cv::fitEllipse(pointsf);
 		// 楕円の描画
 		ellipse(headRegion, head, cv::Scalar(0, 0, 255), 2, CV_AA);
-
+#if 1
+		Point off1 = Point((float)head.center.x - 1000 * cos((head.angle + 90) / 180 * M_PI), (float)head.center.y - 1000 * sin((head.angle + 90) / 180 * M_PI));
+		Point off2 = Point((float)head.center.x + 1000 * cos((head.angle + 90) / 180 * M_PI), (float)head.center.y + 1000 * sin((head.angle + 90) / 180 * M_PI));
+		line(headRegion, off1, off2, Scalar(155, 0, 155), 1);
+#endif
 	}
 
 
@@ -96,7 +106,7 @@ void FingerTipDetector::FindHands(cv::Mat& handRegion, cv::Mat& headRegion, cv::
 	for (int i = 0; i < contoursHand.size(); ++i)
 	{
 		size_t count = contoursHand[i].size();
-		if (count < 120 || count > 500) { continue; }
+		if (count < 50 || count > 500) { continue; }
 
 		int id = i;
 		if (count > handCount[0])
@@ -131,13 +141,20 @@ void FingerTipDetector::FindHands(cv::Mat& handRegion, cv::Mat& headRegion, cv::
 	bool isFoundFirstHand = false;
 	for (int i = 0; i < 2; ++i)
 	{
+		if (boxHands[i].center.x < 0) boxHands[i].center.x = 0;
+		if (boxHands[i].center.x > binHand.cols) boxHands[i].center.x = binHand.cols - 1;
+		if (boxHands[i].center.y < 0) boxHands[i].center.y = 0;
+		if (boxHands[i].center.y > binHand.rows) boxHands[i].center.y = binHand.rows - 1;
+
 		// 検出ミスによるノイズ除去
 		if (boxHands[i].size.width <= 0 || boxHands[i].size.height <= 0
-			|| boxHands[i].size.height / boxHands[i].size.width < 2.5)	// 円に近いものは腕とみなさない
+			|| boxHands[i].size.height / boxHands[i].size.width < 1.5	// 円に近いものは腕とみなさない
+			//|| *binHand.ptr<unsigned char>(boxHands[i].center.y, boxHands[i].center.x) == 0
+			)
 		{
 			continue;
 		}
-
+		cout << boxHands[i].size.height << "," << boxHands[i].size.width << endl;
 		// 楕円の回転角 [pi]
 		float angleHead = (head.angle - 90.0f) / 180.0f * M_PI;
 		float angleHand = (boxHands[i].angle - 90.0f) / 180.0f * M_PI;
@@ -154,8 +171,12 @@ void FingerTipDetector::FindHands(cv::Mat& handRegion, cv::Mat& headRegion, cv::
 
 		Mat C = A.inv() * B;
 		
-		circle(headRegion, Point(*C.ptr<float>(0, 0), *C.ptr<float>(1, 0)), 4, Scalar(200, 200, 100), 3);
-				
+		circle(headRegion, Point(*C.ptr<float>(0, 0), *C.ptr<float>(1, 0)), 4, Scalar(255, 0, 255), 3);
+#if 1 
+		Point off1 = Point((float)boxHands[i].center.x - 1000 * cos((boxHands[i].angle + 90) / 180 * M_PI), (float)boxHands[i].center.y - 1000 * sin((boxHands[i].angle + 90) / 180 * M_PI));
+		Point off2 = Point((float)boxHands[i].center.x + 1000 * cos((boxHands[i].angle + 90) / 180 * M_PI), (float)boxHands[i].center.y + 1000 * sin((boxHands[i].angle + 90) / 180 * M_PI));
+		line(handRegion, off1, off2, Scalar(155, 0, 155), 1);
+#endif			
 		// 上下どちらを向いているかを判別 / Detect which user is looking up or down
 		0 < (sin(angleHead) * (boxHands[i].center.x - head.center.x) - cos(angleHead) * (boxHands[i].center.y - head.center.y)) ?
 			isLookingUp[i] = true :
@@ -184,7 +205,7 @@ void FingerTipDetector::FindHands(cv::Mat& handRegion, cv::Mat& headRegion, cv::
 				isLeftHand[i] = false :
 				isLeftHand[i] = true;
 		}
-		isLeftHand ? cout << "left" << endl : cout << "right" << endl;
+		//isLeftHand[i] ? cout << "left" << endl : cout << "right" << endl;
 
 		// 2本とも同じ腕の場合無視
 		if (i == 1)
@@ -194,7 +215,6 @@ void FingerTipDetector::FindHands(cv::Mat& handRegion, cv::Mat& headRegion, cv::
 				return;
 			}
 		}
-
 		// Set hand info
 		isLeftHand[i] ?
 			handL = boxHands[i] :
@@ -243,7 +263,7 @@ cv::Point3f FingerTipDetector::DetectHandCenter(cv::Mat handRegion, const cv::Ro
 	}
 
 	// Calc centroid of the hand
-	const int offset = 50;
+	const int offset = 60;
 	Point3f aveHand; aveHand.x = 0; aveHand.y = 0; aveHand.z = 0;
 	Point2i debugPoint;
 	int count = 0;

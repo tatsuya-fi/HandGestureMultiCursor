@@ -52,7 +52,7 @@
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_CRT_SECURE_NO_WARNINGS;</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>C:\opencv2410\opencv\build\include;$(KINECTSDK20_DIR)\inc;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\opencv249\opencv\build\include;$(KINECTSDK20_DIR)\inc;</AdditionalIncludeDirectories>
       <ForcedIncludeFiles>stdafx.h</ForcedIncludeFiles>
     </ClCompile>
     <Link>

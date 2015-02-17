@@ -13,6 +13,7 @@ static int mEvent;
 static int mFlag;
 
 const static char* windowName = "CalibrateTables";
+const char* filename = "../HandGestureMultiCursor/calibData/TableInfo1.xml";
 
 
 void onMouse(int event, int x, int y, int flag, void*)
@@ -75,6 +76,60 @@ void onMouse(int event, int x, int y, int flag, void*)
 	//std::cout << desc << " (" << x << ", " << y << ")" << std::endl;
 }
 
+void selectTableArea(cv::Mat& showImgColor)
+{
+	std::ostringstream os;
+	os << "Click 4 corners of the table";
+	String str = os.str();
+	Mat showImgColorBuf = showImgColor.clone();
+	putText(showImgColorBuf, str, Point(1, 28), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255), 1, CV_AA);
+	imshow(windowName, showImgColorBuf);
+	cvWaitKey(10);
+
+	vector<Point2i> corners;
+	while (1)
+	{
+		showImgColorBuf = showImgColor.clone();
+		putText(showImgColorBuf, str, Point(1, 28), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255), 1, CV_AA);
+		if (mFlag & cv::EVENT_FLAG_LBUTTON)
+		{
+			Point2i newCorner = Point2i(mX, mY);
+			const int thresh = 10;
+			bool isSamePoint = false;
+			for (size_t i = 0; i < corners.size(); ++i)
+			{
+				if (norm(corners[i] - newCorner) < thresh)
+				{
+					isSamePoint = true;
+				}
+			}
+			if (!isSamePoint)
+			{
+				cout << newCorner << endl;
+				corners.push_back(newCorner);
+				circle(showImgColor, newCorner, 2, Scalar(0, 0, 255), 2);
+			}
+			if (corners.size() == 4) { break; }
+		}
+		imshow(windowName, showImgColorBuf);
+		cvWaitKey(10);
+	}
+	
+	Mat cornersMat = (Mat_<int>(4, 2) <<
+		corners[0].x, corners[0].y,
+		corners[1].x, corners[1].y,
+		corners[2].x, corners[2].y,
+		corners[3].x, corners[3].y
+		);
+
+	cv::FileStorage   cvfs(filename, CV_STORAGE_APPEND);
+	cv::WriteStructContext ws(cvfs, "table_corners", CV_NODE_SEQ);    // create node
+	cv::write(cvfs, "", cornersMat);
+
+	cout << "corners saved" << endl;
+	cout << cornersMat << endl;
+}
+
 const cv::Mat calcPlaneParam(const vector<Point3f> planePoints)
 {
 	cout << planePoints.size() << " points were selected" << endl;
@@ -93,13 +148,13 @@ const cv::Mat calcPlaneParam(const vector<Point3f> planePoints)
 
 
 	// Save data
-	const char* filename = "../HandGestureMultiCursor/calibData/TableInfo1.xml";
 	cv::FileStorage   cvfs(filename, CV_STORAGE_WRITE);
 	cv::WriteStructContext ws(cvfs, "mat_array", CV_NODE_SEQ);    // create node
 	cv::write(cvfs, "", planeParam);
 
 	cout << "Parameter was saved" << endl;
 	cout << planeParam << endl;
+
 
 	return planeParam;
 }
@@ -362,7 +417,7 @@ const cv::Mat calcPlaneParamSVD(const vector<Point3f> planePoints)
 void drawPlane(cv::Mat& showImgColor, cv::Mat& planeParam, cv::Mat& pointCloud)
 {
 	// 描画する平面からの距離のしきい値[m]
-	const float thresh = 0.03;
+	const float thresh = 0.01;
 	for (int y = 0; y < showImgColor.rows; ++y)
 	{
 		for (int x = 0; x < showImgColor.cols; ++x)
@@ -462,21 +517,46 @@ void calibTable(const KinectV2Basics kinect, cv::Mat& showImg, cv::Mat& pointClo
 		case 'c':
 		case 'C':
 		{
+			if (tablePoints.size() < 3)
+			{
+				std::ostringstream osErr;
+				Mat showImgColorBufErr = showImgColor.clone();
+				osErr << "More than 3 Table Points should be selected.";
+				String strErr = osErr.str();
+				putText(showImgColorBufErr, strErr, Point(2, 28), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255), 1, CV_AA);
+				osErr.str(""); // バッファをクリアする。
+				osErr.clear(stringstream::goodbit); // ストリームの状態をクリアする。この行がないと意図通りに動作しない
+				osErr << "Press any key and try again.";
+				strErr = osErr.str();
+				putText(showImgColorBufErr, strErr, Point(2, 56), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255), 1, CV_AA);
+				imshow(windowName, showImgColorBufErr);
+				cvWaitKey();
+				imshow(windowName, showImgColorBuf);
+				break;
+			}
+
+			// Calcrate table plane parameters
 			Mat planeParam = calcPlaneParam(tablePoints);
 			cout << planeParam << endl;
 			if (planeParam.empty()) { continue; }
 			
 			// Draw plane area
 			drawPlane(showImgColor, planeParam, pointCloud);
+
+			// Select and save 4 table corner
+			selectTableArea(showImgColor);
+
 			std::ostringstream os1, os2;
 			os1 << "Parameter is saved.";
-			os2 << "Press ESC key to quit or click table area and calibrate again";
+			os2 << "Press ESC key to quit or press other key and calibrate again";
 			String str1 = os1.str();
 			putText(showImgColor, str1, Point(2, 28), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255), 1, CV_AA);
 			str1 = os2.str();
 			putText(showImgColor, str1, Point(2, 56), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 255), 1, CV_AA);
 
 			imshow(windowName, showImgColor);
+			if (cvWaitKey() == KEY_ESC) { return; }
+
 			tablePoints.clear();
 			showImgColor = Mat::zeros(showImg.rows, showImg.cols, CV_8UC3);
 			for (int y = 0; y < showImg.rows; ++y)
